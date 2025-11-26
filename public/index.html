@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>위조지폐 찾기 게임</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 로비 화면 -->
+    <div id="lobby" class="screen active">
+        <h1>위조지폐 찾기 게임</h1>
+        <p class="subtitle">GAN 기반 실시간 멀티플레이어 추리 게임</p>
+
+        <div class="lobby-content">
+            <div class="team-setup" id="joinSection">
+                <h2>팀 입장</h2>
+                <input type="text" id="teamNameInput" placeholder="팀 이름을 입력하세요" maxlength="10">
+                <div class="role-buttons">
+                    <button class="role-btn creator-btn" onclick="joinTeam('creator')">위조지폐 제작자</button>
+                    <button class="role-btn police-btn" onclick="joinTeam('police')">경찰</button>
+                </div>
+            </div>
+
+            <div class="team-setup joined-info" id="joinedSection" style="display: none;">
+                <h2>입장 완료!</h2>
+                <p>팀 이름: <strong id="myTeamName"></strong></p>
+                <p>역할: <strong id="myRole"></strong></p>
+                <p class="waiting-msg">다른 팀들을 기다리는 중...</p>
+            </div>
+
+            <div class="team-list">
+                <h3>참가 팀 (<span id="teamCount">0</span>/10)</h3>
+                <ul id="teamList"></ul>
+            </div>
+
+            <button id="startGameBtn" class="start-btn" onclick="startGame()" disabled>
+                게임 시작 (최소 2팀 필요)
+            </button>
+        </div>
+    </div>
+
+    <!-- 게임 화면 -->
+    <div id="game" class="screen">
+        <div class="game-header">
+            <div class="round-info">
+                <span>라운드 <span id="currentRound">1</span>/5</span>
+            </div>
+            <div class="phase-info">
+                <span id="phaseText">위조지폐 제작 단계</span>
+            </div>
+            <div class="timer-container">
+                <span id="timer">30</span>초
+            </div>
+        </div>
+
+        <div class="game-main">
+            <div class="current-turn">
+                <h2 id="turnInfo">팀1의 차례</h2>
+                <p id="roleInfo">역할: 위조지폐 제작자</p>
+            </div>
+
+            <!-- 지폐 디자인 영역 -->
+            <div class="bill-container">
+                <div class="bill">
+                    <div class="bill-header">
+                        <span class="bill-title">한국은행</span>
+                    </div>
+                    <div id="billGrid" class="bill-grid">
+                        <!-- 6x4 격자 생성됨 -->
+                    </div>
+                    <div class="bill-footer">
+                        <select id="amountSelect" class="amount-select">
+                            <option value="1000">1,000원</option>
+                            <option value="5000">5,000원</option>
+                            <option value="10000" selected>10,000원</option>
+                            <option value="50000">50,000원</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 요소 선택 패널 -->
+            <div class="element-panel" id="elementPanel">
+                <h3>배치할 요소 선택</h3>
+                <div class="elements">
+                    <button class="element-btn" data-element="portrait" onclick="selectElement('portrait')">
+                        👤 인물
+                    </button>
+                    <button class="element-btn" data-element="logo" onclick="selectElement('logo')">
+                        🏛️ 로고
+                    </button>
+                    <button class="element-btn" data-element="watermark" onclick="selectElement('watermark')">
+                        💧 워터마크
+                    </button>
+                    <button class="element-btn" data-element="serial" onclick="selectElement('serial')">
+                        🔢 일련번호
+                    </button>
+                    <button class="element-btn" data-element="pattern" onclick="selectElement('pattern')">
+                        🌀 무늬
+                    </button>
+                    <button class="element-btn" data-element="stamp" onclick="selectElement('stamp')">
+                        🔖 도장
+                    </button>
+                </div>
+                <p class="hint">요소를 선택한 후 격자를 클릭하세요</p>
+            </div>
+
+            <!-- 대기 메시지 -->
+            <div class="waiting-message" id="waitingMessage" style="display: none;">
+                <h3>다른 팀이 제작 중입니다...</h3>
+                <p>잠시만 기다려주세요.</p>
+            </div>
+
+            <!-- 제출 현황 -->
+            <div class="submission-status" id="submissionStatus" style="display: none;">
+                <h3>제출 현황</h3>
+                <p><span id="submittedCount">0</span> / <span id="totalPolice">0</span> 팀 제출</p>
+                <ul id="submittedList"></ul>
+            </div>
+
+            <button id="submitBtn" class="submit-btn" onclick="submitBill()">제출하기</button>
+            <p id="alreadySubmitted" class="submitted-msg" style="display: none;">제출 완료! 다른 팀을 기다리는 중...</p>
+        </div>
+    </div>
+
+    <!-- 결과 화면 -->
+    <div id="result" class="screen">
+        <h2 id="resultTitle">결과</h2>
+        <div id="originalBill" class="result-bill-container">
+            <h3>원본 위조지폐</h3>
+            <div class="result-bill" id="originalBillDisplay"></div>
+        </div>
+        <div id="resultList" class="result-list"></div>
+        <button id="nextRoundBtn" class="next-btn" onclick="nextRound()">다음 라운드</button>
+        <button id="restartBtn" class="restart-btn" onclick="restartGame()" style="display:none;">처음부터</button>
+    </div>
+
+    <!-- 최종 결과 화면 -->
+    <div id="finalResult" class="screen">
+        <h1>최종 결과</h1>
+        <div id="finalScores" class="final-scores"></div>
+        <div id="winner" class="winner"></div>
+        <button class="restart-btn" onclick="restartGame()">처음부터</button>
+    </div>
+
+    <!-- 에러 토스트 -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
