@@ -944,6 +944,33 @@ body {
     transform: scale(1.05);
 }
 
+/* 단계 시작 대기 화면 */
+#stageStart {
+    text-align: center;
+    padding-top: 100px;
+}
+
+#stageStart h1 {
+    font-size: 3rem;
+    margin-bottom: 20px;
+    background: linear-gradient(45deg, #27ae60, #2ecc71);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.stage-subtitle {
+    color: #888;
+    margin-bottom: 40px;
+    font-size: 1.3rem;
+}
+
+#waitingForAppraiserMsg {
+    color: #f39c12;
+    font-size: 1.2rem;
+    margin-top: 20px;
+}
+
 /* 최종 결과 화면 */
 #finalResult {
     text-align: center;
@@ -1009,10 +1036,24 @@ body {
     margin-bottom: 10px;
 }
 
+.score-card .perfect-count {
+    font-size: 1rem;
+    color: #27ae60;
+    margin-bottom: 15px;
+}
+
 .score-card .stage-breakdown {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     color: #aaa;
-    line-height: 1.6;
+    line-height: 1.8;
+    margin-top: 10px;
+}
+
+.score-card .stage-breakdown .stage-result {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 5px 10px;
+    border-radius: 5px;
+    margin: 3px 0;
 }
 
 .winner {

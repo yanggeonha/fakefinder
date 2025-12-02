@@ -10,17 +10,16 @@
     <!-- 로비 화면 -->
     <div id="lobby" class="screen active">
         <h1>위조지폐 찾기 게임</h1>
-        <p class="subtitle">감별사 vs 위조지폐제작자 - 실시간 멀티플레이어 추리 게임</p>
+        <p class="subtitle">감별사 vs 위조지폐범 - 실시간 멀티플레이어 추리 게임</p>
 
         <div class="lobby-content">
             <div class="team-setup" id="joinSection">
                 <h2>팀 입장</h2>
                 <input type="text" id="teamNameInput" placeholder="팀 이름을 입력하세요" maxlength="10">
                 <div class="role-buttons">
-                    <button class="role-btn appraiser-btn" onclick="joinTeam('appraiser')">감별사 (1명)</button>
-                    <button class="role-btn counterfeiter-btn" onclick="joinTeam('counterfeiter')">위조지폐제작자</button>
+                    <button class="role-btn appraiser-btn" onclick="joinTeam('appraiser')">감별사 (선생님)</button>
+                    <button class="role-btn counterfeiter-btn" onclick="joinTeam('counterfeiter')">위조지폐범</button>
                 </div>
-                <p class="role-hint">감별사: 위조지폐를 만듭니다 | 위조지폐제작자: 감별사의 지폐를 맞춥니다</p>
             </div>
 
             <div class="team-setup joined-info" id="joinedSection" style="display: none;">
@@ -35,8 +34,8 @@
                 <ul id="teamList"></ul>
             </div>
 
-            <button id="startGameBtn" class="start-btn" onclick="startGame()" disabled>
-                게임 시작 (감별사 + 위조지폐제작자 필요)
+            <button id="startGameBtn" class="start-btn" onclick="startGame()" disabled style="display: none;">
+                게임 시작 (감별사 + 위조지폐범 필요)
             </button>
         </div>
     </div>
@@ -151,12 +150,21 @@
         </div>
         <div id="resultList" class="result-list"></div>
         <button id="nextRoundBtn" class="next-btn" onclick="nextRound()">다음 라운드</button>
+        <p id="waitingNextRoundMsg" class="waiting-msg" style="display: none;">감별사가 다음 라운드를 시작할 때까지 기다려주세요...</p>
         <button id="restartBtn" class="restart-btn" onclick="restartGame()" style="display:none;">처음부터</button>
+    </div>
+
+    <!-- 단계 시작 대기 화면 -->
+    <div id="stageStart" class="screen">
+        <h1 id="stageStartTitle">1단계 완료!</h1>
+        <p class="stage-subtitle" id="stageStartSubtitle">2단계를 시작할 준비가 되었습니다.</p>
+        <button id="startNextStageBtn" class="start-btn" onclick="startNextStage()" style="display: none;">2단계 시작</button>
+        <p id="waitingForAppraiserMsg" class="waiting-msg">감별사가 다음 단계를 시작할 때까지 기다려주세요...</p>
     </div>
 
     <!-- 최종 결과 화면 -->
     <div id="finalResult" class="screen">
-        <h1>최종 결과</h1>
+        <h1>🏆 최종 결과 🏆</h1>
         <p class="final-subtitle">3단계 15라운드 완료!</p>
         <div id="finalScores" class="final-scores"></div>
         <div id="winner" class="winner"></div>

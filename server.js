@@ -364,12 +364,21 @@ io.on('connection', (socket) => {
                             ? Math.round(allRounds.reduce((a, b) => a + b, 0) / allRounds.length)
                             : 0;
 
+                        // 단계별 평균 계산
+                        const stage1Avg = results.stage1.length > 0
+                            ? Math.round(results.stage1.reduce((a, b) => a + b, 0) / results.stage1.length) : 0;
+                        const stage2Avg = results.stage2.length > 0
+                            ? Math.round(results.stage2.reduce((a, b) => a + b, 0) / results.stage2.length) : 0;
+                        const stage3Avg = results.stage3.length > 0
+                            ? Math.round(results.stage3.reduce((a, b) => a + b, 0) / results.stage3.length) : 0;
+
                         return {
                             id: team.id,
                             name: team.name,
                             perfectRounds: perfectRounds,
                             avgScore: avgScore,
-                            roundResults: results
+                            roundResults: results,
+                            stageAvgs: { stage1: stage1Avg, stage2: stage2Avg, stage3: stage3Avg }
                         };
                     })
                     .sort((a, b) => b.perfectRounds - a.perfectRounds || b.avgScore - a.avgScore);
@@ -379,7 +388,13 @@ io.on('connection', (socket) => {
                     winner: finalScores[0]
                 });
             } else {
-                // 다음 단계 시작
+                // 다음 단계 시작 대기 (지폐 초기화)
+                gameState.phase = 'stageWaiting';
+                gameState.originalBill = null;
+                gameState.submissions = {};
+                gameState.usedElements = [];
+                gameState.totalElementCount = 0;
+
                 io.emit('stageComplete', {
                     completedStage: gameState.currentStage - 1,
                     nextStage: gameState.currentStage,
@@ -387,22 +402,23 @@ io.on('connection', (socket) => {
                 });
             }
         } else {
-            // 다음 라운드
-            gameState.phase = 'creating';
-            gameState.originalBill = null;
+            // 다음 라운드 (같은 단계 내 - 지폐 유지, 바로 guessing 단계로)
+            gameState.phase = 'guessing';
             gameState.submissions = {};
-            gameState.usedElements = [];
-            gameState.totalElementCount = 0;
 
             const appraiser = gameState.teams.find(t => t.role === 'appraiser');
 
-            io.emit('newRound', {
-                phase: 'creating',
+            io.emit('newRoundGuessing', {
+                phase: 'guessing',
                 currentStage: gameState.currentStage,
                 currentRound: gameState.currentRound,
                 creator: appraiser,
+                usedElements: gameState.usedElements,
+                totalElementCount: gameState.totalElementCount,
                 roundResults: gameState.roundResults
             });
+
+            startTimer();
         }
     });
 
