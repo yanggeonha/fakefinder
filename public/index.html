@@ -62,22 +62,58 @@
 
             <!-- 지폐 디자인 영역 -->
             <div class="bill-container">
-                <div class="bill">
-                    <div class="bill-header">
-                        <span class="bill-title">한국은행</span>
+                <div class="bill" id="billElement" data-amount="10000">
+                    <!-- 지폐 상단 -->
+                    <div class="bill-top">
+                        <div class="bank-name">한국은행</div>
+                        <div class="bank-name-en">BANK OF KOREA</div>
                     </div>
-                    <div id="billGrid" class="bill-grid">
-                        <!-- 6x4 격자 생성됨 -->
+
+                    <!-- 지폐 메인 영역 -->
+                    <div class="bill-main">
+                        <!-- 왼쪽: 인물 영역 -->
+                        <div class="bill-left">
+                            <div class="portrait-area" id="portraitArea">
+                                <div class="portrait-placeholder">인물</div>
+                            </div>
+                        </div>
+
+                        <!-- 중앙: 격자 영역 -->
+                        <div class="bill-center">
+                            <div id="billGrid" class="bill-grid">
+                                <!-- 5x3 격자 생성됨 -->
+                            </div>
+                        </div>
+
+                        <!-- 오른쪽: 금액 영역 -->
+                        <div class="bill-right">
+                            <div class="amount-display" id="amountDisplay">10000</div>
+                            <div class="amount-unit">원</div>
+                        </div>
                     </div>
-                    <div class="bill-footer">
-                        <select id="amountSelect" class="amount-select">
-                            <option value="1000">1,000원</option>
-                            <option value="5000">5,000원</option>
-                            <option value="10000" selected>10,000원</option>
-                            <option value="50000">50,000원</option>
-                        </select>
+
+                    <!-- 지폐 하단 -->
+                    <div class="bill-bottom">
+                        <div class="serial-area">AB12345678가</div>
+                        <div class="watermark-area">
+                            <span class="watermark-icon">◐</span>
+                        </div>
+                        <div class="hologram-area">
+                            <span class="hologram-icon">◈</span>
+                        </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- 금액 선택 -->
+            <div class="amount-selector">
+                <label>금액 선택:</label>
+                <select id="amountSelect" class="amount-select" onchange="changeAmount(this.value)">
+                    <option value="1000">1,000원 (이황)</option>
+                    <option value="5000">5,000원 (이이)</option>
+                    <option value="10000" selected>10,000원 (세종대왕)</option>
+                    <option value="50000">50,000원 (신사임당)</option>
+                </select>
             </div>
 
             <!-- 요소 선택 패널 -->

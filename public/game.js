@@ -1,6 +1,20 @@
 // Socket.io 연결
 const socket = io();
 
+// 연결 상태 로깅
+socket.on('connect', () => {
+    console.log('서버에 연결됨:', socket.id);
+});
+
+socket.on('disconnect', () => {
+    console.log('서버 연결 끊김');
+});
+
+socket.on('connect_error', (error) => {
+    console.error('연결 오류:', error);
+    showToast('서버 연결 오류!');
+});
+
 // 클라이언트 상태
 const clientState = {
     myTeam: null,
@@ -21,12 +35,27 @@ const elementIcons = {
     stamp: '🔖'
 };
 
-// 빈 지폐 생성
+// 빈 지폐 생성 (5x3 = 15칸)
 function createEmptyBill() {
     return {
-        grid: Array(24).fill(null),
+        grid: Array(15).fill(null),
         amount: '10000'
     };
+}
+
+// 금액 변경
+function changeAmount(amount) {
+    clientState.currentBill.amount = amount;
+    const bill = document.getElementById('billElement');
+    if (bill) {
+        bill.dataset.amount = amount;
+    }
+
+    // 금액 표시 업데이트
+    const amountDisplay = document.getElementById('amountDisplay');
+    if (amountDisplay) {
+        amountDisplay.textContent = amount;
+    }
 }
 
 // 토스트 메시지 표시
@@ -55,18 +84,24 @@ function updateTeamList(teams) {
 
     count.textContent = teams.length;
 
-    list.innerHTML = teams.map(team => `
-        <li class="${clientState.myTeam && team.id === clientState.myTeam.id ? 'me' : ''}">
-            <span>${team.name} ${clientState.myTeam && team.id === clientState.myTeam.id ? '(나)' : ''}</span>
-            <span class="role ${team.role}">${team.role === 'creator' ? '위조지폐 제작자' : '경찰'}</span>
-        </li>
-    `).join('');
+    list.innerHTML = teams.map(team => {
+        const isMe = clientState.myTeam && team.id === clientState.myTeam.id;
+        const roleName = team.role === 'creator' ? '위조지폐 제작자' : '경찰';
+        return `
+            <li class="${isMe ? 'me' : ''}">
+                <span>${team.name} ${isMe ? '(나)' : ''}</span>
+                <span class="role ${team.role}">${roleName}</span>
+            </li>
+        `;
+    }).join('');
 
     // 시작 버튼 상태
     const btn = document.getElementById('startGameBtn');
     const hasEnoughTeams = teams.length >= 2;
     btn.disabled = !hasEnoughTeams;
     btn.textContent = hasEnoughTeams ? '게임 시작!' : '게임 시작 (최소 2팀 필요)';
+
+    console.log('팀 목록 업데이트:', teams.length, '팀');
 }
 
 // 팀 입장
@@ -79,6 +114,7 @@ function joinTeam(role) {
         return;
     }
 
+    console.log('팀 입장 시도:', teamName, '역할:', role);
     socket.emit('joinTeam', { name: teamName, role: role });
 }
 
@@ -87,12 +123,12 @@ function startGame() {
     socket.emit('startGame');
 }
 
-// 지폐 격자 생성
+// 지폐 격자 생성 (5x3 = 15칸)
 function createBillGrid(editable = true) {
     const grid = document.getElementById('billGrid');
     grid.innerHTML = '';
 
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 15; i++) {
         const cell = document.createElement('div');
         cell.className = 'grid-cell';
         cell.dataset.index = i;
@@ -111,10 +147,26 @@ function createBillGrid(editable = true) {
 
     // 지폐 편집 가능 여부
     const bill = document.querySelector('.bill');
-    if (editable) {
-        bill.classList.remove('disabled');
-    } else {
-        bill.classList.add('disabled');
+    if (bill) {
+        if (editable) {
+            bill.classList.remove('disabled');
+        } else {
+            bill.classList.add('disabled');
+        }
+        // 현재 금액으로 색상 설정
+        bill.dataset.amount = clientState.currentBill.amount;
+    }
+
+    // 금액 표시 업데이트
+    const amountDisplay = document.getElementById('amountDisplay');
+    if (amountDisplay) {
+        amountDisplay.textContent = clientState.currentBill.amount;
+    }
+
+    // 금액 선택기 동기화
+    const amountSelect = document.getElementById('amountSelect');
+    if (amountSelect) {
+        amountSelect.value = clientState.currentBill.amount;
     }
 }
 
@@ -180,33 +232,52 @@ function restartGame() {
 // 지폐 HTML 생성 (결과용)
 function createBillHTML(bill, small = false) {
     const gridHTML = bill.grid.map((cell, i) => `
-        <div class="grid-cell ${cell ? 'filled' : ''}" style="${small ? 'font-size: 0.9rem;' : ''}">
+        <div class="grid-cell ${cell ? 'filled' : ''}" style="${small ? 'font-size: 0.8rem;' : ''}">
             ${cell ? elementIcons[cell] : ''}
         </div>
     `).join('');
 
     const amounts = {
-        '1000': '1,000원',
-        '5000': '5,000원',
-        '10000': '10,000원',
-        '50000': '50,000원'
+        '1000': '1,000원 (이황)',
+        '5000': '5,000원 (이이)',
+        '10000': '10,000원 (세종대왕)',
+        '50000': '50,000원 (신사임당)'
     };
 
     return `
-        <div class="bill-grid" style="${small ? 'min-height: 120px;' : ''}">
+        <div class="bill-info">
+            <span>한국은행</span>
+            <span>${amounts[bill.amount] || bill.amount}</span>
+        </div>
+        <div class="bill-grid">
             ${gridHTML}
         </div>
-        <div style="text-align: center; margin-top: 10px; color: #2c3e50; font-weight: bold;">
-            ${amounts[bill.amount] || bill.amount}
-        </div>
+        <div class="bill-amount">${bill.amount}원</div>
     `;
+}
+
+// 결과 지폐 컨테이너 생성
+function createResultBillHTML(bill) {
+    const container = document.createElement('div');
+    container.className = 'result-bill';
+    container.dataset.amount = bill.amount;
+    container.innerHTML = createBillHTML(bill);
+    return container.outerHTML;
 }
 
 // ===== Socket.io 이벤트 핸들러 =====
 
 // 초기 게임 상태 수신
 socket.on('gameState', (data) => {
+    console.log('게임 상태 수신:', data);
     updateTeamList(data.teams);
+
+    // 새 사용자는 항상 joinSection을 볼 수 있어야 함
+    if (!clientState.myTeam) {
+        document.getElementById('joinSection').style.display = 'block';
+        document.getElementById('joinedSection').style.display = 'none';
+    }
+
     if (data.gameStarted) {
         showToast('게임이 진행 중입니다!');
     }
@@ -217,22 +288,21 @@ socket.on('error', (message) => {
     showToast(message);
 });
 
-// 팀 입장 성공
-socket.on('teamJoined', (data) => {
-    updateTeamList(data.teams);
+// 본인 입장 성공 (본인에게만 전송됨)
+socket.on('joinSuccess', (data) => {
+    console.log('입장 성공:', data.team);
+    clientState.myTeam = data.team;
+    document.getElementById('joinSection').style.display = 'none';
+    document.getElementById('joinedSection').style.display = 'block';
+    document.getElementById('myTeamName').textContent = clientState.myTeam.name;
+    document.getElementById('myRole').textContent =
+        clientState.myTeam.role === 'creator' ? '위조지폐 제작자' : '경찰';
+    showToast('입장 완료!');
+});
 
-    // 내가 방금 입장한 경우
-    if (data.newTeam && !clientState.myTeam) {
-        const lastTeam = data.teams[data.teams.length - 1];
-        if (!clientState.myTeam) {
-            clientState.myTeam = data.newTeam;
-            document.getElementById('joinSection').style.display = 'none';
-            document.getElementById('joinedSection').style.display = 'block';
-            document.getElementById('myTeamName').textContent = clientState.myTeam.name;
-            document.getElementById('myRole').textContent =
-                clientState.myTeam.role === 'creator' ? '위조지폐 제작자' : '경찰';
-        }
-    }
+// 팀 목록 업데이트 (모든 클라이언트에게 전송됨)
+socket.on('teamListUpdated', (data) => {
+    updateTeamList(data.teams);
 });
 
 // 팀 퇴장
@@ -343,7 +413,9 @@ socket.on('showResults', (data) => {
     document.getElementById('resultTitle').textContent = `${data.creator.name}의 위조지폐 결과`;
 
     // 원본 지폐 표시
-    document.getElementById('originalBillDisplay').innerHTML = createBillHTML(data.originalBill);
+    const originalDisplay = document.getElementById('originalBillDisplay');
+    originalDisplay.innerHTML = createBillHTML(data.originalBill);
+    originalDisplay.dataset.amount = data.originalBill.amount;
 
     // 각 팀 결과 표시
     const resultList = document.getElementById('resultList');
@@ -369,7 +441,9 @@ socket.on('showResults', (data) => {
             <div class="match-rate ${rateClass}">${result.matchRate}%</div>
             <div class="status ${statusClass}">${statusText}</div>
             <div class="mini-bill">
-                ${createBillHTML(result.submission, true)}
+                <div class="result-bill" data-amount="${result.submission.amount}">
+                    ${createBillHTML(result.submission, true)}
+                </div>
             </div>
         `;
 

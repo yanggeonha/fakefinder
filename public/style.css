@@ -267,20 +267,63 @@ body {
     color: #3498db;
 }
 
-/* 지폐 디자인 */
+/* 지폐 디자인 - 한국 원화 스타일 */
 .bill-container {
     display: flex;
     justify-content: center;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
+    perspective: 1000px;
 }
 
 .bill {
-    width: 500px;
-    background: linear-gradient(135deg, #f5e6d3 0%, #e8d5b7 100%);
-    border-radius: 15px;
-    padding: 15px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    border: 3px solid #c9a959;
+    width: 580px;
+    height: 260px;
+    border-radius: 8px;
+    padding: 12px 15px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+}
+
+/* 지폐 배경 패턴 */
+.bill::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 2px,
+            rgba(255,255,255,0.03) 2px,
+            rgba(255,255,255,0.03) 4px
+        );
+    pointer-events: none;
+}
+
+/* 금액별 지폐 색상 */
+.bill[data-amount="1000"] {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 50%, #1e3a5f 100%);
+    border: 2px solid #4a90c2;
+}
+
+.bill[data-amount="5000"] {
+    background: linear-gradient(135deg, #8b6914 0%, #c49a2d 50%, #8b6914 100%);
+    border: 2px solid #d4af37;
+}
+
+.bill[data-amount="10000"] {
+    background: linear-gradient(135deg, #1a4d2e 0%, #2d7a4a 50%, #1a4d2e 100%);
+    border: 2px solid #3d9960;
+}
+
+.bill[data-amount="50000"] {
+    background: linear-gradient(135deg, #8b7355 0%, #c4a574 50%, #8b7355 100%);
+    border: 2px solid #d4c4a8;
 }
 
 .bill.disabled {
@@ -288,64 +331,195 @@ body {
     pointer-events: none;
 }
 
-.bill-header {
-    text-align: center;
-    margin-bottom: 10px;
+/* 지폐 상단 */
+.bill-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
 }
 
-.bill-title {
-    font-size: 1.5rem;
-    color: #2c3e50;
+.bank-name {
+    font-size: 1.1rem;
     font-weight: bold;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    letter-spacing: 3px;
+}
+
+.bank-name-en {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 1px;
+}
+
+/* 지폐 메인 영역 */
+.bill-main {
+    display: flex;
+    gap: 10px;
+    height: 160px;
+}
+
+/* 왼쪽: 인물 영역 */
+.bill-left {
+    width: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.portrait-area {
+    width: 85px;
+    height: 110px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.portrait-placeholder {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.9rem;
+}
+
+/* 인물별 이미지 표시 */
+.bill[data-amount="1000"] .portrait-area::after { content: '이황'; }
+.bill[data-amount="5000"] .portrait-area::after { content: '이이'; }
+.bill[data-amount="10000"] .portrait-area::after { content: '세종'; }
+.bill[data-amount="50000"] .portrait-area::after { content: '신사임당'; }
+
+.portrait-area::after {
+    position: absolute;
+    bottom: 5px;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* 중앙: 격자 영역 */
+.bill-center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .bill-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    grid-template-rows: repeat(4, 1fr);
-    gap: 5px;
-    background: rgba(0, 0, 0, 0.1);
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.2);
     padding: 10px;
-    border-radius: 10px;
-    min-height: 200px;
+    border-radius: 8px;
+    width: 100%;
+    height: 140px;
 }
 
 .grid-cell {
-    background: rgba(255, 255, 255, 0.5);
-    border: 1px dashed #999;
-    border-radius: 5px;
-    aspect-ratio: 1;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px dashed rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
+    font-size: 1.3rem;
 }
 
 .grid-cell:hover {
-    background: rgba(255, 255, 255, 0.8);
-    border-color: #3498db;
+    background: rgba(255, 255, 255, 0.4);
+    border-color: #fff;
+    transform: scale(1.05);
 }
 
 .grid-cell.filled {
-    background: rgba(52, 152, 219, 0.3);
-    border: 2px solid #3498db;
+    background: rgba(255, 255, 255, 0.5);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 }
 
-.bill-footer {
-    margin-top: 10px;
+/* 오른쪽: 금액 영역 */
+.bill-right {
+    width: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.amount-display {
+    font-size: 2rem;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    font-family: 'Georgia', serif;
+}
+
+.amount-unit {
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 5px;
+}
+
+/* 지폐 하단 */
+.bill-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.serial-area {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.7);
+    letter-spacing: 2px;
+}
+
+.watermark-area, .hologram-area {
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.hologram-icon {
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; color: #ffd700; }
+}
+
+/* 금액 선택기 */
+.amount-selector {
     text-align: center;
+    margin-bottom: 20px;
+}
+
+.amount-selector label {
+    margin-right: 10px;
+    font-size: 1.1rem;
 }
 
 .amount-select {
     padding: 10px 20px;
-    font-size: 1.2rem;
-    border: 2px solid #c9a959;
+    font-size: 1.1rem;
+    border: 2px solid #f39c12;
     border-radius: 8px;
-    background: white;
-    color: #2c3e50;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
     cursor: pointer;
+}
+
+.amount-select option {
+    background: #1a1a2e;
+    color: white;
 }
 
 /* 요소 선택 패널 */
@@ -481,39 +655,76 @@ body {
 }
 
 .result-bill {
-    width: 400px;
-    background: linear-gradient(135deg, #f5e6d3 0%, #e8d5b7 100%);
-    border-radius: 15px;
-    padding: 15px;
+    width: 450px;
+    border-radius: 8px;
+    padding: 10px 12px;
     margin: 0 auto;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    border: 3px solid #c9a959;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    position: relative;
+}
+
+/* 결과 지폐 금액별 색상 */
+.result-bill[data-amount="1000"] {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 50%, #1e3a5f 100%);
+    border: 2px solid #4a90c2;
+}
+
+.result-bill[data-amount="5000"] {
+    background: linear-gradient(135deg, #8b6914 0%, #c49a2d 50%, #8b6914 100%);
+    border: 2px solid #d4af37;
+}
+
+.result-bill[data-amount="10000"] {
+    background: linear-gradient(135deg, #1a4d2e 0%, #2d7a4a 50%, #1a4d2e 100%);
+    border: 2px solid #3d9960;
+}
+
+.result-bill[data-amount="50000"] {
+    background: linear-gradient(135deg, #8b7355 0%, #c4a574 50%, #8b7355 100%);
+    border: 2px solid #d4c4a8;
+}
+
+.result-bill .bill-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
 }
 
 .result-bill .bill-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    grid-template-rows: repeat(4, 1fr);
-    gap: 5px;
-    background: rgba(0, 0, 0, 0.1);
-    padding: 10px;
-    border-radius: 10px;
-    min-height: 160px;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 8px;
+    border-radius: 6px;
+    min-height: 100px;
 }
 
 .result-bill .grid-cell {
-    background: rgba(255, 255, 255, 0.5);
-    border: 1px dashed #999;
-    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.2rem;
+    font-size: 1rem;
 }
 
 .result-bill .grid-cell.filled {
-    background: rgba(52, 152, 219, 0.3);
-    border: 2px solid #3498db;
+    background: rgba(255, 255, 255, 0.5);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+}
+
+.result-bill .bill-amount {
+    text-align: right;
+    margin-top: 8px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .result-list {

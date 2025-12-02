@@ -25,10 +25,10 @@ const gameState = {
     gameStarted: false
 };
 
-// 빈 지폐 생성
+// 빈 지폐 생성 (5x3 = 15칸)
 function createEmptyBill() {
     return {
-        grid: Array(24).fill(null),
+        grid: Array(15).fill(null),
         amount: '10000'
     };
 }
@@ -38,7 +38,8 @@ function calculateMatchRate(original, submitted) {
     let matches = 0;
     let total = 0;
 
-    for (let i = 0; i < 24; i++) {
+    // 격자 비교 (15칸)
+    for (let i = 0; i < 15; i++) {
         if (original.grid[i] !== null || submitted.grid[i] !== null) {
             total++;
             if (original.grid[i] === submitted.grid[i]) {
@@ -147,18 +148,30 @@ io.on('connection', (socket) => {
 
     // 팀 입장
     socket.on('joinTeam', (data) => {
+        console.log(`입장 시도: ${data.name} (${data.role}) - socket: ${socket.id}`);
+
         if (gameState.gameStarted) {
+            console.log('입장 실패: 게임 이미 시작됨');
             socket.emit('error', '게임이 이미 시작되었습니다!');
             return;
         }
 
         if (gameState.teams.length >= 10) {
+            console.log('입장 실패: 최대 인원 초과');
             socket.emit('error', '최대 10팀까지만 참가할 수 있습니다!');
             return;
         }
 
         if (gameState.teams.some(t => t.name === data.name)) {
+            console.log('입장 실패: 중복된 팀 이름');
             socket.emit('error', '이미 존재하는 팀 이름입니다!');
+            return;
+        }
+
+        // 이미 입장한 소켓인지 확인
+        if (gameState.teams.some(t => t.id === socket.id)) {
+            console.log('입장 실패: 이미 입장한 소켓');
+            socket.emit('error', '이미 입장했습니다!');
             return;
         }
 
@@ -173,12 +186,15 @@ io.on('connection', (socket) => {
 
         socket.team = team;
 
-        io.emit('teamJoined', {
-            teams: gameState.teams,
-            newTeam: team
+        // 입장한 본인에게만 성공 알림
+        socket.emit('joinSuccess', { team: team });
+
+        // 모든 클라이언트에게 팀 목록 업데이트
+        io.emit('teamListUpdated', {
+            teams: gameState.teams
         });
 
-        console.log(`팀 입장: ${team.name} (${team.role})`);
+        console.log(`팀 입장 성공: ${team.name} (${team.role}) - 현재 ${gameState.teams.length}팀`);
     });
 
     // 게임 시작
@@ -351,6 +367,20 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`서버가 http://localhost:${PORT} 에서 실행 중입니다.`);
+const HOST = '0.0.0.0'; // 모든 네트워크 인터페이스에서 접근 가능
+
+server.listen(PORT, HOST, () => {
+    console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
+    console.log(`로컬 접속: http://localhost:${PORT}`);
+
+    // 로컬 IP 주소 표시
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                console.log(`다른 기기 접속: http://${iface.address}:${PORT}`);
+            }
+        }
+    }
 });
