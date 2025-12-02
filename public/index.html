@@ -10,16 +10,17 @@
     <!-- 로비 화면 -->
     <div id="lobby" class="screen active">
         <h1>위조지폐 찾기 게임</h1>
-        <p class="subtitle">GAN 기반 실시간 멀티플레이어 추리 게임</p>
+        <p class="subtitle">감별사 vs 위조지폐제작자 - 실시간 멀티플레이어 추리 게임</p>
 
         <div class="lobby-content">
             <div class="team-setup" id="joinSection">
                 <h2>팀 입장</h2>
                 <input type="text" id="teamNameInput" placeholder="팀 이름을 입력하세요" maxlength="10">
                 <div class="role-buttons">
-                    <button class="role-btn creator-btn" onclick="joinTeam('creator')">위조지폐 제작자</button>
-                    <button class="role-btn police-btn" onclick="joinTeam('police')">경찰</button>
+                    <button class="role-btn appraiser-btn" onclick="joinTeam('appraiser')">감별사 (1명)</button>
+                    <button class="role-btn counterfeiter-btn" onclick="joinTeam('counterfeiter')">위조지폐제작자</button>
                 </div>
+                <p class="role-hint">감별사: 위조지폐를 만듭니다 | 위조지폐제작자: 감별사의 지폐를 맞춥니다</p>
             </div>
 
             <div class="team-setup joined-info" id="joinedSection" style="display: none;">
@@ -35,7 +36,7 @@
             </div>
 
             <button id="startGameBtn" class="start-btn" onclick="startGame()" disabled>
-                게임 시작 (최소 2팀 필요)
+                게임 시작 (감별사 + 위조지폐제작자 필요)
             </button>
         </div>
     </div>
@@ -43,7 +44,8 @@
     <!-- 게임 화면 -->
     <div id="game" class="screen">
         <div class="game-header">
-            <div class="round-info">
+            <div class="stage-round-info">
+                <span class="stage-badge"><span id="currentStage">1</span>단계</span>
                 <span>라운드 <span id="currentRound">1</span>/5</span>
             </div>
             <div class="phase-info">
@@ -54,109 +56,89 @@
             </div>
         </div>
 
-        <div class="game-main">
-            <div class="current-turn">
-                <h2 id="turnInfo">팀1의 차례</h2>
-                <p id="roleInfo">역할: 위조지폐 제작자</p>
-            </div>
+        <div class="game-main-container">
+            <div class="game-main">
+                <div class="current-turn">
+                    <h2 id="turnInfo">감별사의 차례</h2>
+                    <p id="roleInfo">역할: 감별사</p>
+                </div>
 
-            <!-- 지폐 디자인 영역 -->
-            <div class="bill-container">
-                <div class="bill" id="billElement" data-amount="10000">
-                    <!-- 지폐 상단 -->
-                    <div class="bill-top">
-                        <div class="bank-name">한국은행</div>
-                        <div class="bank-name-en">BANK OF KOREA</div>
-                    </div>
+                <!-- 지폐 디자인 영역 -->
+                <div class="bill-container">
+                    <div class="bill" id="billElement" data-amount="10000">
+                        <div class="bill-top">
+                            <div class="bank-name">한국은행</div>
+                            <div class="bank-name-en">BANK OF KOREA</div>
+                        </div>
 
-                    <!-- 지폐 메인 영역 -->
-                    <div class="bill-main">
-                        <!-- 왼쪽: 인물 영역 -->
-                        <div class="bill-left">
-                            <div class="portrait-area" id="portraitArea">
-                                <div class="portrait-placeholder">인물</div>
+                        <div class="bill-main">
+                            <div class="bill-left">
+                                <div class="portrait-area" id="portraitArea">
+                                    <div class="portrait-placeholder">인물</div>
+                                </div>
+                            </div>
+
+                            <div class="bill-center">
+                                <div id="billGrid" class="bill-grid"></div>
+                            </div>
+
+                            <div class="bill-right">
+                                <div class="amount-display" id="amountDisplay">10000</div>
+                                <div class="amount-unit">원</div>
                             </div>
                         </div>
 
-                        <!-- 중앙: 격자 영역 -->
-                        <div class="bill-center">
-                            <div id="billGrid" class="bill-grid">
-                                <!-- 5x3 격자 생성됨 -->
+                        <div class="bill-bottom">
+                            <div class="serial-area">AB12345678가</div>
+                            <div class="watermark-area">
+                                <span class="watermark-icon">◐</span>
+                            </div>
+                            <div class="hologram-area">
+                                <span class="hologram-icon">◈</span>
                             </div>
                         </div>
-
-                        <!-- 오른쪽: 금액 영역 -->
-                        <div class="bill-right">
-                            <div class="amount-display" id="amountDisplay">10000</div>
-                            <div class="amount-unit">원</div>
-                        </div>
-                    </div>
-
-                    <!-- 지폐 하단 -->
-                    <div class="bill-bottom">
-                        <div class="serial-area">AB12345678가</div>
-                        <div class="watermark-area">
-                            <span class="watermark-icon">◐</span>
-                        </div>
-                        <div class="hologram-area">
-                            <span class="hologram-icon">◈</span>
-                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- 금액 선택 -->
-            <div class="amount-selector">
-                <label>금액 선택:</label>
-                <select id="amountSelect" class="amount-select" onchange="changeAmount(this.value)">
-                    <option value="1000">1,000원 (이황)</option>
-                    <option value="5000">5,000원 (이이)</option>
-                    <option value="10000" selected>10,000원 (세종대왕)</option>
-                    <option value="50000">50,000원 (신사임당)</option>
-                </select>
-            </div>
-
-            <!-- 요소 선택 패널 -->
-            <div class="element-panel" id="elementPanel">
-                <h3>배치할 요소 선택</h3>
-                <div class="elements">
-                    <button class="element-btn" data-element="portrait" onclick="selectElement('portrait')">
-                        👤 인물
-                    </button>
-                    <button class="element-btn" data-element="logo" onclick="selectElement('logo')">
-                        🏛️ 로고
-                    </button>
-                    <button class="element-btn" data-element="watermark" onclick="selectElement('watermark')">
-                        💧 워터마크
-                    </button>
-                    <button class="element-btn" data-element="serial" onclick="selectElement('serial')">
-                        🔢 일련번호
-                    </button>
-                    <button class="element-btn" data-element="pattern" onclick="selectElement('pattern')">
-                        🌀 무늬
-                    </button>
-                    <button class="element-btn" data-element="stamp" onclick="selectElement('stamp')">
-                        🔖 도장
-                    </button>
+                <!-- 금액 선택 -->
+                <div class="amount-selector">
+                    <label>금액 선택:</label>
+                    <select id="amountSelect" class="amount-select" onchange="changeAmount(this.value)">
+                        <option value="1000">1,000원 (이황)</option>
+                        <option value="5000">5,000원 (이이)</option>
+                        <option value="10000" selected>10,000원 (세종대왕)</option>
+                        <option value="50000">50,000원 (신사임당)</option>
+                    </select>
                 </div>
-                <p class="hint">요소를 선택한 후 격자를 클릭하세요</p>
+
+                <!-- 요소 선택 패널 -->
+                <div class="element-panel" id="elementPanel">
+                    <h3 id="elementPanelTitle">배치할 요소 선택</h3>
+                    <div class="elements"></div>
+                    <p class="hint">요소를 선택한 후 격자를 클릭하세요</p>
+                </div>
+
+                <!-- 대기 메시지 -->
+                <div class="waiting-message" id="waitingMessage" style="display: none;">
+                    <h3>감별사가 위조지폐를 만드는 중...</h3>
+                    <p>잠시만 기다려주세요.</p>
+                </div>
+
+                <!-- 제출 현황 -->
+                <div class="submission-status" id="submissionStatus" style="display: none;">
+                    <h3>제출 현황</h3>
+                    <p><span id="submittedCount">0</span> / <span id="totalCounterfeiters">0</span> 팀 제출</p>
+                    <ul id="submittedList"></ul>
+                </div>
+
+                <button id="submitBtn" class="submit-btn" onclick="submitBill()">제출하기</button>
+                <p id="alreadySubmitted" class="submitted-msg" style="display: none;">제출 완료! 다른 팀을 기다리는 중...</p>
             </div>
 
-            <!-- 대기 메시지 -->
-            <div class="waiting-message" id="waitingMessage" style="display: none;">
-                <h3>다른 팀이 제작 중입니다...</h3>
-                <p>잠시만 기다려주세요.</p>
+            <!-- 오른쪽 라운드 결과 패널 -->
+            <div class="round-results-panel" id="roundResultsPanel">
+                <h3>라운드 결과</h3>
             </div>
-
-            <!-- 제출 현황 -->
-            <div class="submission-status" id="submissionStatus" style="display: none;">
-                <h3>제출 현황</h3>
-                <p><span id="submittedCount">0</span> / <span id="totalPolice">0</span> 팀 제출</p>
-                <ul id="submittedList"></ul>
-            </div>
-
-            <button id="submitBtn" class="submit-btn" onclick="submitBill()">제출하기</button>
-            <p id="alreadySubmitted" class="submitted-msg" style="display: none;">제출 완료! 다른 팀을 기다리는 중...</p>
         </div>
     </div>
 
@@ -164,7 +146,7 @@
     <div id="result" class="screen">
         <h2 id="resultTitle">결과</h2>
         <div id="originalBill" class="result-bill-container">
-            <h3>원본 위조지폐</h3>
+            <h3>원본 위조지폐 (감별사)</h3>
             <div class="result-bill" id="originalBillDisplay"></div>
         </div>
         <div id="resultList" class="result-list"></div>
@@ -175,6 +157,7 @@
     <!-- 최종 결과 화면 -->
     <div id="finalResult" class="screen">
         <h1>최종 결과</h1>
+        <p class="final-subtitle">3단계 15라운드 완료!</p>
         <div id="finalScores" class="final-scores"></div>
         <div id="winner" class="winner"></div>
         <button class="restart-btn" onclick="restartGame()">처음부터</button>

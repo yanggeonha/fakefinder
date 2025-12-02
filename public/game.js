@@ -19,10 +19,15 @@ socket.on('connect_error', (error) => {
 const clientState = {
     myTeam: null,
     teams: [],
-    isCreator: false,
+    isAppraiser: false,
     hasSubmitted: false,
     selectedElement: null,
-    currentBill: createEmptyBill()
+    currentBill: createEmptyBill(),
+    usedElements: [],       // 감별사가 사용한 요소들 (고유 타입)
+    totalElementCount: 0,   // 감별사가 배치한 총 요소 개수
+    roundResults: {},       // 각 팀 라운드별 결과
+    currentStage: 1,
+    currentRound: 1
 };
 
 // 요소 아이콘 매핑
@@ -33,6 +38,15 @@ const elementIcons = {
     serial: '🔢',
     pattern: '🌀',
     stamp: '🔖'
+};
+
+const elementNames = {
+    portrait: '인물',
+    logo: '로고',
+    watermark: '워터마크',
+    serial: '일련번호',
+    pattern: '무늬',
+    stamp: '도장'
 };
 
 // 빈 지폐 생성 (5x3 = 15칸)
@@ -51,7 +65,6 @@ function changeAmount(amount) {
         bill.dataset.amount = amount;
     }
 
-    // 금액 표시 업데이트
     const amountDisplay = document.getElementById('amountDisplay');
     if (amountDisplay) {
         amountDisplay.textContent = amount;
@@ -86,7 +99,7 @@ function updateTeamList(teams) {
 
     list.innerHTML = teams.map(team => {
         const isMe = clientState.myTeam && team.id === clientState.myTeam.id;
-        const roleName = team.role === 'creator' ? '위조지폐 제작자' : '경찰';
+        const roleName = team.role === 'appraiser' ? '감별사' : '위조지폐제작자';
         return `
             <li class="${isMe ? 'me' : ''}">
                 <span>${team.name} ${isMe ? '(나)' : ''}</span>
@@ -97,11 +110,18 @@ function updateTeamList(teams) {
 
     // 시작 버튼 상태
     const btn = document.getElementById('startGameBtn');
-    const hasEnoughTeams = teams.length >= 2;
-    btn.disabled = !hasEnoughTeams;
-    btn.textContent = hasEnoughTeams ? '게임 시작!' : '게임 시작 (최소 2팀 필요)';
+    const hasAppraiser = teams.some(t => t.role === 'appraiser');
+    const hasCounterfeiter = teams.some(t => t.role === 'counterfeiter');
+    const canStart = hasAppraiser && hasCounterfeiter;
 
-    console.log('팀 목록 업데이트:', teams.length, '팀');
+    btn.disabled = !canStart;
+    if (!hasAppraiser) {
+        btn.textContent = '게임 시작 (감별사 필요)';
+    } else if (!hasCounterfeiter) {
+        btn.textContent = '게임 시작 (위조지폐제작자 필요)';
+    } else {
+        btn.textContent = '게임 시작!';
+    }
 }
 
 // 팀 입장
@@ -124,7 +144,7 @@ function startGame() {
 }
 
 // 지폐 격자 생성 (5x3 = 15칸)
-function createBillGrid(editable = true) {
+function createBillGrid(editable = true, correctPositions = []) {
     const grid = document.getElementById('billGrid');
     grid.innerHTML = '';
 
@@ -132,6 +152,11 @@ function createBillGrid(editable = true) {
         const cell = document.createElement('div');
         cell.className = 'grid-cell';
         cell.dataset.index = i;
+
+        // 맞은 위치 초록색 테두리
+        if (correctPositions.includes(i)) {
+            cell.classList.add('correct');
+        }
 
         if (editable) {
             cell.onclick = () => placeElement(i);
@@ -145,7 +170,6 @@ function createBillGrid(editable = true) {
         grid.appendChild(cell);
     }
 
-    // 지폐 편집 가능 여부
     const bill = document.querySelector('.bill');
     if (bill) {
         if (editable) {
@@ -153,32 +177,88 @@ function createBillGrid(editable = true) {
         } else {
             bill.classList.add('disabled');
         }
-        // 현재 금액으로 색상 설정
         bill.dataset.amount = clientState.currentBill.amount;
     }
 
-    // 금액 표시 업데이트
     const amountDisplay = document.getElementById('amountDisplay');
     if (amountDisplay) {
         amountDisplay.textContent = clientState.currentBill.amount;
     }
 
-    // 금액 선택기 동기화
     const amountSelect = document.getElementById('amountSelect');
     if (amountSelect) {
         amountSelect.value = clientState.currentBill.amount;
     }
 }
 
+// 요소 패널 업데이트
+function updateElementPanel(allowedElements = null) {
+    const panel = document.getElementById('elementPanel');
+    const elementsDiv = panel.querySelector('.elements');
+    elementsDiv.innerHTML = '';
+
+    const allElements = ['portrait', 'logo', 'watermark', 'serial', 'pattern', 'stamp'];
+    const elementsToShow = allowedElements || allElements;
+
+    // 패널 제목 업데이트
+    const title = document.getElementById('elementPanelTitle');
+    if (title) {
+        if (clientState.isAppraiser) {
+            title.textContent = '배치할 요소 선택 (제한 없음)';
+        } else {
+            title.textContent = '배치할 요소 선택 (각 요소는 1개씩만)';
+        }
+    }
+
+    elementsToShow.forEach(element => {
+        const btn = document.createElement('button');
+        btn.className = 'element-btn';
+        btn.dataset.element = element;
+        btn.onclick = () => selectElement(element);
+
+        // 위조지폐제작자만 이미 배치된 요소 비활성화 (감별사는 제한 없음)
+        if (!clientState.isAppraiser) {
+            const isUsed = clientState.currentBill.grid.includes(element);
+            if (isUsed) {
+                btn.classList.add('used');
+                btn.disabled = true;
+            }
+        }
+
+        btn.innerHTML = `${elementIcons[element]} ${elementNames[element]}`;
+        elementsDiv.appendChild(btn);
+    });
+
+    // 힌트 텍스트 업데이트
+    const hint = panel.querySelector('.hint');
+    if (hint) {
+        const usedCount = clientState.currentBill.grid.filter(e => e !== null).length;
+        if (clientState.isAppraiser) {
+            hint.textContent = `요소를 선택한 후 격자를 클릭하세요 (${usedCount}개 배치됨)`;
+        } else {
+            hint.textContent = `요소를 선택한 후 격자를 클릭하세요 (${usedCount}/${clientState.totalElementCount}개 배치됨)`;
+        }
+    }
+}
+
 // 요소 선택
 function selectElement(element) {
+    // 위조지폐제작자만 이미 배치된 요소 선택 불가 (감별사는 제한 없음)
+    if (!clientState.isAppraiser && clientState.currentBill.grid.includes(element)) {
+        showToast('이미 배치된 요소입니다!');
+        return;
+    }
+
     clientState.selectedElement = element;
 
     document.querySelectorAll('.element-btn').forEach(btn => {
         btn.classList.remove('selected');
     });
 
-    document.querySelector(`[data-element="${element}"]`).classList.add('selected');
+    const selectedBtn = document.querySelector(`[data-element="${element}"]`);
+    if (selectedBtn && !selectedBtn.disabled) {
+        selectedBtn.classList.add('selected');
+    }
 }
 
 // 요소 배치
@@ -188,13 +268,27 @@ function placeElement(index) {
         return;
     }
 
+    // 같은 위치에 같은 요소가 있으면 제거
     if (clientState.currentBill.grid[index] === clientState.selectedElement) {
         clientState.currentBill.grid[index] = null;
     } else {
+        // 위조지폐제작자만 요소 1개씩 제한 (감별사는 제한 없음)
+        if (!clientState.isAppraiser) {
+            // 이미 다른 곳에 배치된 요소인지 확인
+            const existingIndex = clientState.currentBill.grid.indexOf(clientState.selectedElement);
+            if (existingIndex !== -1) {
+                // 기존 위치에서 제거
+                clientState.currentBill.grid[existingIndex] = null;
+            }
+        }
+
+        // 새 위치에 배치 (기존 요소 덮어쓰기)
         clientState.currentBill.grid[index] = clientState.selectedElement;
     }
 
+    clientState.selectedElement = null;
     createBillGrid(true);
+    updateElementPanel(clientState.isAppraiser ? null : clientState.usedElements);
 }
 
 // 제출
@@ -203,13 +297,19 @@ function submitBill() {
     clientState.currentBill.amount = amount;
 
     // 최소 1개 요소 체크
-    const hasElements = clientState.currentBill.grid.some(cell => cell !== null);
-    if (!hasElements) {
+    const placedCount = clientState.currentBill.grid.filter(cell => cell !== null).length;
+    if (placedCount === 0) {
         showToast('최소 1개의 요소를 배치해주세요!');
         return;
     }
 
-    if (clientState.isCreator) {
+    // 위조지폐제작자는 감별사가 배치한 총 요소 개수만큼 배치해야 함
+    if (!clientState.isAppraiser && placedCount !== clientState.totalElementCount) {
+        showToast(`${clientState.totalElementCount}개의 요소를 모두 배치해주세요!`);
+        return;
+    }
+
+    if (clientState.isAppraiser) {
         socket.emit('submitOriginal', clientState.currentBill);
     } else {
         socket.emit('submitGuess', clientState.currentBill);
@@ -224,18 +324,87 @@ function nextRound() {
     socket.emit('nextRound');
 }
 
+// 다음 단계
+function startNextStage() {
+    socket.emit('startNextStage');
+}
+
 // 게임 재시작
 function restartGame() {
     socket.emit('restartGame');
 }
 
+// 라운드 결과 패널 업데이트
+function updateRoundResultsPanel(roundResults) {
+    const panel = document.getElementById('roundResultsPanel');
+    if (!panel) return;
+
+    panel.innerHTML = '<h3>라운드 결과</h3>';
+
+    // 현재 단계 정보
+    const stageInfo = document.createElement('div');
+    stageInfo.className = 'stage-info';
+    stageInfo.textContent = `${clientState.currentStage}단계`;
+    panel.appendChild(stageInfo);
+
+    clientState.teams.forEach(team => {
+        if (team.role !== 'counterfeiter') return;
+
+        const results = roundResults[team.id];
+        if (!results) return;
+
+        const teamDiv = document.createElement('div');
+        teamDiv.className = 'team-results';
+        if (clientState.myTeam && team.id === clientState.myTeam.id) {
+            teamDiv.classList.add('my-team');
+        }
+
+        const teamName = document.createElement('div');
+        teamName.className = 'team-name';
+        teamName.textContent = team.name + (clientState.myTeam && team.id === clientState.myTeam.id ? ' (나)' : '');
+        teamDiv.appendChild(teamName);
+
+        // 현재 단계의 라운드 결과만 표시
+        const currentStageResults = results[`stage${clientState.currentStage}`] || [];
+        for (let i = 0; i < 5; i++) {
+            const roundDiv = document.createElement('div');
+            roundDiv.className = 'round-result';
+
+            if (i < currentStageResults.length) {
+                const rate = currentStageResults[i];
+                roundDiv.textContent = `R${i + 1}: ${rate}%`;
+                if (rate === 100) {
+                    roundDiv.classList.add('perfect');
+                } else if (rate >= 80) {
+                    roundDiv.classList.add('high');
+                } else if (rate >= 50) {
+                    roundDiv.classList.add('medium');
+                } else {
+                    roundDiv.classList.add('low');
+                }
+            } else {
+                roundDiv.textContent = `R${i + 1}: -`;
+                roundDiv.classList.add('pending');
+            }
+
+            teamDiv.appendChild(roundDiv);
+        }
+
+        panel.appendChild(teamDiv);
+    });
+}
+
 // 지폐 HTML 생성 (결과용)
-function createBillHTML(bill, small = false) {
-    const gridHTML = bill.grid.map((cell, i) => `
-        <div class="grid-cell ${cell ? 'filled' : ''}" style="${small ? 'font-size: 0.8rem;' : ''}">
-            ${cell ? elementIcons[cell] : ''}
-        </div>
-    `).join('');
+function createBillHTML(bill, small = false, correctPositions = [], showCorrect = false) {
+    const gridHTML = bill.grid.map((cell, i) => {
+        const isCorrect = correctPositions.includes(i);
+        const correctClass = showCorrect && isCorrect ? 'correct' : '';
+        return `
+            <div class="grid-cell ${cell ? 'filled' : ''} ${correctClass}" style="${small ? 'font-size: 0.8rem;' : ''}">
+                ${cell ? elementIcons[cell] : ''}
+            </div>
+        `;
+    }).join('');
 
     const amounts = {
         '1000': '1,000원 (이황)',
@@ -256,23 +425,16 @@ function createBillHTML(bill, small = false) {
     `;
 }
 
-// 결과 지폐 컨테이너 생성
-function createResultBillHTML(bill) {
-    const container = document.createElement('div');
-    container.className = 'result-bill';
-    container.dataset.amount = bill.amount;
-    container.innerHTML = createBillHTML(bill);
-    return container.outerHTML;
-}
-
 // ===== Socket.io 이벤트 핸들러 =====
 
 // 초기 게임 상태 수신
 socket.on('gameState', (data) => {
     console.log('게임 상태 수신:', data);
     updateTeamList(data.teams);
+    clientState.roundResults = data.roundResults || {};
+    clientState.currentStage = data.currentStage || 1;
+    clientState.currentRound = data.currentRound || 1;
 
-    // 새 사용자는 항상 joinSection을 볼 수 있어야 함
     if (!clientState.myTeam) {
         document.getElementById('joinSection').style.display = 'block';
         document.getElementById('joinedSection').style.display = 'none';
@@ -288,7 +450,7 @@ socket.on('error', (message) => {
     showToast(message);
 });
 
-// 본인 입장 성공 (본인에게만 전송됨)
+// 본인 입장 성공
 socket.on('joinSuccess', (data) => {
     console.log('입장 성공:', data.team);
     clientState.myTeam = data.team;
@@ -296,11 +458,11 @@ socket.on('joinSuccess', (data) => {
     document.getElementById('joinedSection').style.display = 'block';
     document.getElementById('myTeamName').textContent = clientState.myTeam.name;
     document.getElementById('myRole').textContent =
-        clientState.myTeam.role === 'creator' ? '위조지폐 제작자' : '경찰';
+        clientState.myTeam.role === 'appraiser' ? '감별사' : '위조지폐제작자';
     showToast('입장 완료!');
 });
 
-// 팀 목록 업데이트 (모든 클라이언트에게 전송됨)
+// 팀 목록 업데이트
 socket.on('teamListUpdated', (data) => {
     updateTeamList(data.teams);
 });
@@ -313,37 +475,45 @@ socket.on('teamLeft', (data) => {
 
 // 게임 시작
 socket.on('gameStarted', (data) => {
+    clientState.currentStage = data.currentStage;
+    clientState.currentRound = data.currentRound;
+    clientState.teams = data.teams;
     showScreen('game');
-    setupCreatingPhase(data.creator, data.currentRound);
+    setupCreatingPhase(data.creator, data.currentStage, data.currentRound);
 });
 
 // 제작 단계 설정
-function setupCreatingPhase(creator, round) {
+function setupCreatingPhase(creator, stage, round) {
     clientState.currentBill = createEmptyBill();
     clientState.hasSubmitted = false;
-    clientState.isCreator = (clientState.myTeam && clientState.myTeam.id === creator.id);
+    clientState.selectedElement = null;
+    clientState.isAppraiser = (clientState.myTeam && clientState.myTeam.role === 'appraiser');
+    clientState.currentStage = stage;
+    clientState.currentRound = round;
 
+    document.getElementById('currentStage').textContent = stage;
     document.getElementById('currentRound').textContent = round;
     document.getElementById('phaseText').textContent = '위조지폐 제작 단계';
-    document.getElementById('turnInfo').textContent = `${creator.name}의 차례`;
+    document.getElementById('turnInfo').textContent = `${creator.name}(감별사)의 차례`;
     document.getElementById('timer').textContent = '-';
     document.querySelector('.timer-container').classList.remove('warning');
 
-    if (clientState.isCreator) {
-        // 제작자
-        document.getElementById('roleInfo').textContent = '당신은 위조지폐 제작자입니다!';
-        document.getElementById('roleInfo').className = 'creator';
+    if (clientState.isAppraiser) {
+        // 감별사 - 지폐 제작
+        document.getElementById('roleInfo').textContent = '당신은 감별사입니다! 위조지폐를 만드세요.';
+        document.getElementById('roleInfo').className = 'appraiser';
         document.getElementById('elementPanel').style.display = 'block';
         document.getElementById('waitingMessage').style.display = 'none';
         document.getElementById('submissionStatus').style.display = 'none';
         document.getElementById('submitBtn').style.display = 'inline-block';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('alreadySubmitted').style.display = 'none';
+        updateElementPanel(null); // 모든 요소 사용 가능
         createBillGrid(true);
     } else {
-        // 경찰 - 대기
-        document.getElementById('roleInfo').textContent = '경찰: 제작자가 만드는 중...';
-        document.getElementById('roleInfo').className = 'police';
+        // 위조지폐제작자 - 대기
+        document.getElementById('roleInfo').textContent = '위조지폐제작자: 감별사가 만드는 중...';
+        document.getElementById('roleInfo').className = 'counterfeiter';
         document.getElementById('elementPanel').style.display = 'none';
         document.getElementById('waitingMessage').style.display = 'block';
         document.getElementById('submissionStatus').style.display = 'none';
@@ -351,40 +521,48 @@ function setupCreatingPhase(creator, round) {
         document.getElementById('alreadySubmitted').style.display = 'none';
         createBillGrid(false);
     }
+
+    // 라운드 결과 패널 업데이트
+    updateRoundResultsPanel(clientState.roundResults);
 }
 
 // 추측 단계 시작
 socket.on('guessingPhase', (data) => {
     clientState.currentBill = createEmptyBill();
     clientState.hasSubmitted = false;
+    clientState.selectedElement = null;
+    clientState.usedElements = data.usedElements;
+    clientState.totalElementCount = data.totalElementCount;
 
     document.getElementById('phaseText').textContent = '위조지폐 찾기 단계';
-    document.getElementById('turnInfo').textContent = `${data.creator.name}의 위조지폐를 찾아라!`;
+    document.getElementById('turnInfo').textContent = `감별사의 위조지폐를 맞춰라! (${data.totalElementCount}개 요소)`;
 
-    if (clientState.isCreator) {
-        // 제작자는 대기
-        document.getElementById('roleInfo').textContent = '제작 완료! 경찰들이 찾는 중...';
+    if (clientState.isAppraiser) {
+        // 감별사는 대기
+        document.getElementById('roleInfo').textContent = '제작 완료! 위조지폐제작자들이 맞추는 중...';
         document.getElementById('elementPanel').style.display = 'none';
         document.getElementById('waitingMessage').style.display = 'none';
         document.getElementById('submissionStatus').style.display = 'block';
         document.getElementById('submitBtn').style.display = 'none';
         createBillGrid(false);
     } else {
-        // 경찰은 추측
-        document.getElementById('roleInfo').textContent = '경찰: 위조지폐를 찾아 제출하세요!';
-        document.getElementById('roleInfo').className = 'police';
+        // 위조지폐제작자는 추측
+        document.getElementById('roleInfo').textContent = `위조지폐제작자: ${data.totalElementCount}개 요소의 위치를 맞추세요!`;
+        document.getElementById('roleInfo').className = 'counterfeiter';
         document.getElementById('elementPanel').style.display = 'block';
         document.getElementById('waitingMessage').style.display = 'none';
         document.getElementById('submissionStatus').style.display = 'block';
         document.getElementById('submitBtn').style.display = 'inline-block';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('alreadySubmitted').style.display = 'none';
+        updateElementPanel(clientState.usedElements); // 감별사가 사용한 요소만
         createBillGrid(true);
     }
 
     // 제출 현황 초기화
+    const counterfeiters = clientState.teams.filter(t => t.role === 'counterfeiter');
     document.getElementById('submittedCount').textContent = '0';
-    document.getElementById('totalPolice').textContent = clientState.teams.length - 1;
+    document.getElementById('totalCounterfeiters').textContent = counterfeiters.length;
     document.getElementById('submittedList').innerHTML = '';
 });
 
@@ -403,14 +581,18 @@ socket.on('timerUpdate', (timeLeft) => {
 // 제출 현황 업데이트
 socket.on('submissionUpdate', (data) => {
     document.getElementById('submittedCount').textContent = data.submittedCount;
-    document.getElementById('totalPolice').textContent = data.totalPolice;
+    document.getElementById('totalCounterfeiters').textContent = data.totalCounterfeiters;
     document.getElementById('submittedList').innerHTML =
         data.submittedTeams.map(name => `<li>${name}</li>`).join('');
 });
 
-// 결과 표시
-socket.on('showResults', (data) => {
-    document.getElementById('resultTitle').textContent = `${data.creator.name}의 위조지폐 결과`;
+// 라운드 결과 표시
+socket.on('showRoundResults', (data) => {
+    clientState.roundResults = data.roundResults;
+    clientState.currentStage = data.stage;
+
+    document.getElementById('resultTitle').textContent =
+        `${data.stage}단계 ${data.round}라운드 결과`;
 
     // 원본 지폐 표시
     const originalDisplay = document.getElementById('originalBillDisplay');
@@ -423,12 +605,11 @@ socket.on('showResults', (data) => {
 
     data.results.forEach(result => {
         let rateClass = 'low';
-        if (result.matchRate >= 80) rateClass = 'high';
+        if (result.matchRate === 100) rateClass = 'perfect';
+        else if (result.matchRate >= 80) rateClass = 'high';
         else if (result.matchRate >= 50) rateClass = 'medium';
 
-        const statusText = result.caught ? `${data.creator.name} 검거!` : '도주 성공...';
-        const statusClass = result.caught ? 'caught' : 'escaped';
-        const isMe = clientState.myTeam && result.teamId === clientState.myTeam.id;
+        const isMe = clientState.myTeam && result.odcId === clientState.myTeam.id;
 
         const card = document.createElement('div');
         card.className = 'result-card';
@@ -439,10 +620,9 @@ socket.on('showResults', (data) => {
         card.innerHTML = `
             <h4>${result.teamName} ${isMe ? '(나)' : ''}</h4>
             <div class="match-rate ${rateClass}">${result.matchRate}%</div>
-            <div class="status ${statusClass}">${statusText}</div>
             <div class="mini-bill">
                 <div class="result-bill" data-amount="${result.submission.amount}">
-                    ${createBillHTML(result.submission, true)}
+                    ${createBillHTML(result.submission, true, result.correctPositions, true)}
                 </div>
             </div>
         `;
@@ -451,16 +631,35 @@ socket.on('showResults', (data) => {
     });
 
     // 버튼 설정
-    document.getElementById('nextRoundBtn').style.display = data.isLastRound ? 'none' : 'inline-block';
-    document.getElementById('restartBtn').style.display = data.isLastRound ? 'inline-block' : 'none';
+    const isLastRound = data.round >= 5;
+    const isLastStage = data.stage >= 3;
+
+    document.getElementById('nextRoundBtn').style.display = 'inline-block';
+
+    if (isLastRound && isLastStage) {
+        document.getElementById('nextRoundBtn').textContent = '최종 결과 보기';
+    } else if (isLastRound) {
+        document.getElementById('nextRoundBtn').textContent = `${data.stage + 1}단계로`;
+    } else {
+        document.getElementById('nextRoundBtn').textContent = '다음 라운드';
+    }
+
+    document.getElementById('restartBtn').style.display = 'none';
 
     showScreen('result');
 });
 
+// 단계 완료
+socket.on('stageComplete', (data) => {
+    clientState.roundResults = data.roundResults;
+    showToast(`${data.completedStage}단계 완료! ${data.nextStage}단계를 시작합니다.`);
+});
+
 // 새 라운드
 socket.on('newRound', (data) => {
+    clientState.roundResults = data.roundResults || clientState.roundResults;
     showScreen('game');
-    setupCreatingPhase(data.creator, data.currentRound);
+    setupCreatingPhase(data.creator, data.currentStage, data.currentRound);
 });
 
 // 최종 결과
@@ -473,10 +672,20 @@ socket.on('finalResults', (data) => {
         const card = document.createElement('div');
         card.className = 'score-card' + (index === 0 ? ' first' : '');
 
+        // 각 단계별 결과 표시
+        const stageResults = [];
+        for (let s = 1; s <= 3; s++) {
+            const stageData = team.roundResults[`stage${s}`] || [];
+            const perfect = stageData.filter(r => r === 100).length;
+            stageResults.push(`${s}단계: ${perfect}/5 완벽`);
+        }
+
         card.innerHTML = `
             <div class="rank">${index + 1}위</div>
             <h3>${team.name} ${isMe ? '(나)' : ''}</h3>
-            <div class="score">${team.score}점</div>
+            <div class="score">완벽 라운드: ${team.perfectRounds}/15</div>
+            <div class="avg-score">평균: ${team.avgScore}%</div>
+            <div class="stage-breakdown">${stageResults.join(' | ')}</div>
         `;
 
         scoresContainer.appendChild(card);
@@ -491,9 +700,14 @@ socket.on('finalResults', (data) => {
 socket.on('gameReset', () => {
     clientState.myTeam = null;
     clientState.teams = [];
-    clientState.isCreator = false;
+    clientState.isAppraiser = false;
     clientState.hasSubmitted = false;
     clientState.currentBill = createEmptyBill();
+    clientState.usedElements = [];
+    clientState.totalElementCount = 0;
+    clientState.roundResults = {};
+    clientState.currentStage = 1;
+    clientState.currentRound = 1;
 
     document.getElementById('joinSection').style.display = 'block';
     document.getElementById('joinedSection').style.display = 'none';

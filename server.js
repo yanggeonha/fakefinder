@@ -13,16 +13,20 @@ app.use(express.static(path.join(__dirname, 'public')));
 // 게임 상태
 const gameState = {
     teams: [],
-    phase: 'lobby', // lobby, creating, guessing, result, final
-    currentRound: 1,
+    phase: 'lobby', // lobby, creating, guessing, roundResult, stageResult, final
+    currentStage: 1,    // 1, 2, 3 단계
+    currentRound: 1,    // 1~5 라운드
+    maxStages: 3,
     maxRounds: 5,
     currentCreatorIndex: 0,
     originalBill: null,
     submissions: {},
-    scores: {},
+    roundResults: {},   // 각 팀별 라운드 결과 저장: { odcId: { stage1: [r1%, r2%...], stage2: [...] } }
     timerInterval: null,
     timeLeft: 30,
-    gameStarted: false
+    gameStarted: false,
+    usedElements: [],    // 감별사가 사용한 요소들 (고유 타입)
+    totalElementCount: 0 // 감별사가 배치한 총 요소 개수
 };
 
 // 빈 지폐 생성 (5x3 = 15칸)
@@ -33,40 +37,69 @@ function createEmptyBill() {
     };
 }
 
-// 일치율 계산
+// 일치율 계산 및 맞은 위치 반환
 function calculateMatchRate(original, submitted) {
     let matches = 0;
     let total = 0;
+    const correctPositions = [];
 
     // 격자 비교 (15칸)
     for (let i = 0; i < 15; i++) {
-        if (original.grid[i] !== null || submitted.grid[i] !== null) {
+        if (original.grid[i] !== null) {
             total++;
             if (original.grid[i] === submitted.grid[i]) {
                 matches++;
+                correctPositions.push(i);
             }
         }
     }
 
+    // 금액 비교
     total++;
-    if (original.amount === submitted.amount) {
+    const amountCorrect = original.amount === submitted.amount;
+    if (amountCorrect) {
         matches++;
     }
 
-    if (total === 0) return 0;
-    return Math.round((matches / total) * 100);
+    const matchRate = total === 0 ? 0 : Math.round((matches / total) * 100);
+    return { matchRate, correctPositions, amountCorrect };
+}
+
+// 감별사가 사용한 요소 추출 (고유한 요소 타입만)
+function getUsedElements(bill) {
+    const elements = new Set();
+    for (let i = 0; i < 15; i++) {
+        if (bill.grid[i] !== null) {
+            elements.add(bill.grid[i]);
+        }
+    }
+    return Array.from(elements);
+}
+
+// 배치된 총 요소 개수
+function getTotalElementCount(bill) {
+    let count = 0;
+    for (let i = 0; i < 15; i++) {
+        if (bill.grid[i] !== null) {
+            count++;
+        }
+    }
+    return count;
 }
 
 // 게임 상태 초기화
 function resetGame() {
     gameState.teams = [];
     gameState.phase = 'lobby';
+    gameState.currentStage = 1;
     gameState.currentRound = 1;
     gameState.currentCreatorIndex = 0;
     gameState.originalBill = null;
     gameState.submissions = {};
-    gameState.scores = {};
+    gameState.roundResults = {};
     gameState.gameStarted = false;
+    gameState.usedElements = [];
+    gameState.totalElementCount = 0;
     clearInterval(gameState.timerInterval);
 }
 
@@ -82,54 +115,54 @@ function startTimer() {
         if (gameState.timeLeft <= 0) {
             clearInterval(gameState.timerInterval);
             // 시간 초과 - 제출 안 한 팀들 빈 제출 처리
+            const creator = gameState.teams[gameState.currentCreatorIndex];
             gameState.teams.forEach(team => {
-                if (team.id !== gameState.teams[gameState.currentCreatorIndex].id) {
-                    if (!gameState.submissions[team.id]) {
-                        gameState.submissions[team.id] = createEmptyBill();
-                    }
+                if (team.role === 'counterfeiter' && !gameState.submissions[team.id]) {
+                    gameState.submissions[team.id] = createEmptyBill();
                 }
             });
-            showResults();
+            showRoundResults();
         }
     }, 1000);
 }
 
-// 결과 계산 및 전송
-function showResults() {
+// 라운드 결과 계산 및 전송
+function showRoundResults() {
     clearInterval(gameState.timerInterval);
-    gameState.phase = 'result';
+    gameState.phase = 'roundResult';
 
     const creator = gameState.teams[gameState.currentCreatorIndex];
     const results = [];
 
     gameState.teams.forEach(team => {
-        if (team.id !== creator.id) {
+        if (team.role === 'counterfeiter') {
             const submission = gameState.submissions[team.id] || createEmptyBill();
-            const matchRate = calculateMatchRate(gameState.originalBill, submission);
+            const { matchRate, correctPositions, amountCorrect } = calculateMatchRate(gameState.originalBill, submission);
 
-            if (matchRate >= 80) {
-                gameState.scores[team.id] = (gameState.scores[team.id] || 0) + 1;
+            // 라운드 결과 저장
+            if (!gameState.roundResults[team.id]) {
+                gameState.roundResults[team.id] = { stage1: [], stage2: [], stage3: [] };
             }
+            gameState.roundResults[team.id][`stage${gameState.currentStage}`].push(matchRate);
 
             results.push({
-                teamId: team.id,
+                odcId: team.id,
                 teamName: team.name,
                 matchRate: matchRate,
                 submission: submission,
-                caught: matchRate >= 80
+                correctPositions: correctPositions,
+                amountCorrect: amountCorrect
             });
         }
     });
 
-    const isLastTurn = gameState.currentCreatorIndex >= gameState.teams.length - 1;
-    const isLastRound = gameState.currentRound >= gameState.maxRounds && isLastTurn;
-
-    io.emit('showResults', {
+    io.emit('showRoundResults', {
+        stage: gameState.currentStage,
+        round: gameState.currentRound,
         creator: creator,
         originalBill: gameState.originalBill,
         results: results,
-        isLastRound: isLastRound,
-        scores: gameState.scores
+        roundResults: gameState.roundResults
     });
 }
 
@@ -141,9 +174,10 @@ io.on('connection', (socket) => {
     socket.emit('gameState', {
         teams: gameState.teams,
         phase: gameState.phase,
+        currentStage: gameState.currentStage,
         currentRound: gameState.currentRound,
         gameStarted: gameState.gameStarted,
-        scores: gameState.scores
+        roundResults: gameState.roundResults
     });
 
     // 팀 입장
@@ -175,14 +209,21 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // 감별사는 1명만
+        if (data.role === 'appraiser' && gameState.teams.some(t => t.role === 'appraiser')) {
+            console.log('입장 실패: 감별사가 이미 있음');
+            socket.emit('error', '감별사는 1명만 가능합니다!');
+            return;
+        }
+
         const team = {
             id: socket.id,
             name: data.name,
-            role: data.role
+            role: data.role  // 'appraiser' (감별사) 또는 'counterfeiter' (위조지폐제작자)
         };
 
         gameState.teams.push(team);
-        gameState.scores[team.id] = 0;
+        gameState.roundResults[team.id] = { stage1: [], stage2: [], stage3: [] };
 
         socket.team = team;
 
@@ -199,8 +240,16 @@ io.on('connection', (socket) => {
 
     // 게임 시작
     socket.on('startGame', () => {
-        if (gameState.teams.length < 2) {
-            socket.emit('error', '최소 2팀이 필요합니다!');
+        const hasAppraiser = gameState.teams.some(t => t.role === 'appraiser');
+        const hasCounterfeiter = gameState.teams.some(t => t.role === 'counterfeiter');
+
+        if (!hasAppraiser) {
+            socket.emit('error', '감별사가 필요합니다!');
+            return;
+        }
+
+        if (!hasCounterfeiter) {
+            socket.emit('error', '위조지폐제작자가 최소 1팀 필요합니다!');
             return;
         }
 
@@ -208,51 +257,59 @@ io.on('connection', (socket) => {
 
         gameState.gameStarted = true;
         gameState.phase = 'creating';
+        gameState.currentStage = 1;
         gameState.currentRound = 1;
-        gameState.currentCreatorIndex = 0;
 
-        const creator = gameState.teams[gameState.currentCreatorIndex];
+        // 감별사 찾기
+        const appraiser = gameState.teams.find(t => t.role === 'appraiser');
+        gameState.currentCreatorIndex = gameState.teams.indexOf(appraiser);
 
         io.emit('gameStarted', {
             phase: 'creating',
+            currentStage: gameState.currentStage,
             currentRound: gameState.currentRound,
-            creator: creator,
+            creator: appraiser,
             teams: gameState.teams
         });
 
         console.log('게임 시작!');
     });
 
-    // 위조지폐 제출 (제작자)
+    // 위조지폐 제출 (감별사)
     socket.on('submitOriginal', (bill) => {
         if (gameState.phase !== 'creating') return;
 
-        const creator = gameState.teams[gameState.currentCreatorIndex];
-        if (socket.id !== creator.id) {
-            socket.emit('error', '당신은 현재 제작자가 아닙니다!');
+        const appraiser = gameState.teams.find(t => t.role === 'appraiser');
+        if (socket.id !== appraiser.id) {
+            socket.emit('error', '감별사만 지폐를 만들 수 있습니다!');
             return;
         }
 
         gameState.originalBill = bill;
+        gameState.usedElements = getUsedElements(bill);
+        gameState.totalElementCount = getTotalElementCount(bill);
         gameState.phase = 'guessing';
         gameState.submissions = {};
 
         io.emit('guessingPhase', {
-            creator: creator,
+            creator: appraiser,
+            usedElements: gameState.usedElements,
+            elementCount: gameState.usedElements.length,
+            totalElementCount: gameState.totalElementCount,
             timeLeft: 30
         });
 
         startTimer();
-        console.log(`${creator.name}이 위조지폐를 제출했습니다.`);
+        console.log(`감별사가 위조지폐를 제출했습니다. 사용 요소: ${gameState.usedElements.join(', ')}`);
     });
 
-    // 추측 제출 (경찰)
+    // 추측 제출 (위조지폐제작자)
     socket.on('submitGuess', (bill) => {
         if (gameState.phase !== 'guessing') return;
 
-        const creator = gameState.teams[gameState.currentCreatorIndex];
-        if (socket.id === creator.id) {
-            socket.emit('error', '제작자는 제출할 수 없습니다!');
+        const team = gameState.teams.find(t => t.id === socket.id);
+        if (!team || team.role !== 'counterfeiter') {
+            socket.emit('error', '위조지폐제작자만 제출할 수 있습니다!');
             return;
         }
 
@@ -264,66 +321,108 @@ io.on('connection', (socket) => {
         gameState.submissions[socket.id] = bill;
 
         // 제출 현황 브로드캐스트
-        const submittedTeams = gameState.teams.filter(t =>
-            t.id !== creator.id && gameState.submissions[t.id]
-        );
+        const counterfeiters = gameState.teams.filter(t => t.role === 'counterfeiter');
+        const submittedTeams = counterfeiters.filter(t => gameState.submissions[t.id]);
 
         io.emit('submissionUpdate', {
             submittedCount: submittedTeams.length,
-            totalPolice: gameState.teams.length - 1,
+            totalCounterfeiters: counterfeiters.length,
             submittedTeams: submittedTeams.map(t => t.name)
         });
 
-        console.log(`${socket.team?.name || socket.id}이 추측을 제출했습니다.`);
+        console.log(`${team.name}이 추측을 제출했습니다.`);
 
-        // 모든 경찰이 제출했는지 확인
-        const allSubmitted = gameState.teams.every(team =>
-            team.id === creator.id || gameState.submissions[team.id]
-        );
+        // 모든 위조지폐제작자가 제출했는지 확인
+        const allSubmitted = counterfeiters.every(t => gameState.submissions[t.id]);
 
         if (allSubmitted) {
             clearInterval(gameState.timerInterval);
-            showResults();
+            showRoundResults();
         }
     });
 
     // 다음 라운드
     socket.on('nextRound', () => {
-        gameState.currentCreatorIndex++;
-
-        if (gameState.currentCreatorIndex >= gameState.teams.length) {
-            gameState.currentCreatorIndex = 0;
-            gameState.currentRound++;
-        }
+        gameState.currentRound++;
 
         if (gameState.currentRound > gameState.maxRounds) {
-            // 최종 결과
-            gameState.phase = 'final';
+            // 단계 종료
+            gameState.currentRound = 1;
+            gameState.currentStage++;
 
-            const finalScores = gameState.teams.map(team => ({
-                id: team.id,
-                name: team.name,
-                score: gameState.scores[team.id] || 0
-            })).sort((a, b) => b.score - a.score);
+            if (gameState.currentStage > gameState.maxStages) {
+                // 최종 결과
+                gameState.phase = 'final';
 
-            io.emit('finalResults', {
-                scores: finalScores,
-                winner: finalScores[0]
-            });
+                const finalScores = gameState.teams
+                    .filter(t => t.role === 'counterfeiter')
+                    .map(team => {
+                        const results = gameState.roundResults[team.id];
+                        const allRounds = [...results.stage1, ...results.stage2, ...results.stage3];
+                        const perfectRounds = allRounds.filter(r => r === 100).length;
+                        const avgScore = allRounds.length > 0
+                            ? Math.round(allRounds.reduce((a, b) => a + b, 0) / allRounds.length)
+                            : 0;
+
+                        return {
+                            id: team.id,
+                            name: team.name,
+                            perfectRounds: perfectRounds,
+                            avgScore: avgScore,
+                            roundResults: results
+                        };
+                    })
+                    .sort((a, b) => b.perfectRounds - a.perfectRounds || b.avgScore - a.avgScore);
+
+                io.emit('finalResults', {
+                    scores: finalScores,
+                    winner: finalScores[0]
+                });
+            } else {
+                // 다음 단계 시작
+                io.emit('stageComplete', {
+                    completedStage: gameState.currentStage - 1,
+                    nextStage: gameState.currentStage,
+                    roundResults: gameState.roundResults
+                });
+            }
         } else {
             // 다음 라운드
             gameState.phase = 'creating';
             gameState.originalBill = null;
             gameState.submissions = {};
+            gameState.usedElements = [];
+            gameState.totalElementCount = 0;
 
-            const creator = gameState.teams[gameState.currentCreatorIndex];
+            const appraiser = gameState.teams.find(t => t.role === 'appraiser');
 
             io.emit('newRound', {
                 phase: 'creating',
+                currentStage: gameState.currentStage,
                 currentRound: gameState.currentRound,
-                creator: creator
+                creator: appraiser,
+                roundResults: gameState.roundResults
             });
         }
+    });
+
+    // 다음 단계 시작
+    socket.on('startNextStage', () => {
+        gameState.phase = 'creating';
+        gameState.originalBill = null;
+        gameState.submissions = {};
+        gameState.usedElements = [];
+        gameState.totalElementCount = 0;
+
+        const appraiser = gameState.teams.find(t => t.role === 'appraiser');
+
+        io.emit('newRound', {
+            phase: 'creating',
+            currentStage: gameState.currentStage,
+            currentRound: gameState.currentRound,
+            creator: appraiser,
+            roundResults: gameState.roundResults
+        });
     });
 
     // 게임 재시작
@@ -341,7 +440,7 @@ io.on('connection', (socket) => {
         if (index !== -1) {
             const team = gameState.teams[index];
             gameState.teams.splice(index, 1);
-            delete gameState.scores[socket.id];
+            delete gameState.roundResults[socket.id];
 
             io.emit('teamLeft', {
                 teams: gameState.teams,
@@ -350,15 +449,16 @@ io.on('connection', (socket) => {
 
             console.log(`팀 퇴장: ${team.name}`);
 
-            // 게임 중에 제작자가 나갔으면 다음으로 넘김
-            if (gameState.gameStarted && gameState.teams.length > 0) {
-                if (gameState.currentCreatorIndex >= gameState.teams.length) {
-                    gameState.currentCreatorIndex = 0;
-                }
+            // 감별사가 나갔으면 게임 리셋
+            if (team.role === 'appraiser' && gameState.gameStarted) {
+                resetGame();
+                io.emit('gameReset');
+                io.emit('error', '감별사가 나가서 게임이 종료되었습니다.');
             }
 
-            // 팀이 1팀 이하면 로비로
-            if (gameState.teams.length < 2 && gameState.gameStarted) {
+            // 위조지폐제작자가 모두 나갔으면 게임 리셋
+            const counterfeiters = gameState.teams.filter(t => t.role === 'counterfeiter');
+            if (counterfeiters.length === 0 && gameState.gameStarted) {
                 resetGame();
                 io.emit('gameReset');
             }
@@ -367,13 +467,12 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const HOST = '0.0.0.0'; // 모든 네트워크 인터페이스에서 접근 가능
+const HOST = '0.0.0.0';
 
 server.listen(PORT, HOST, () => {
     console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
     console.log(`로컬 접속: http://localhost:${PORT}`);
 
-    // 로컬 IP 주소 표시
     const os = require('os');
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
