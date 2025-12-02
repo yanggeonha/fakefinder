@@ -368,20 +368,20 @@ function updateRoundResultsPanel(roundResults) {
         teamName.textContent = team.name + (clientState.myTeam && team.id === clientState.myTeam.id ? ' (나)' : '');
         teamDiv.appendChild(teamName);
 
-        // 현재 단계의 라운드 결과만 표시
+        // 현재 단계의 라운드 결과만 표시 (맞힌 갯수)
         const currentStageResults = results[`stage${clientState.currentStage}`] || [];
         for (let i = 0; i < 5; i++) {
             const roundDiv = document.createElement('div');
             roundDiv.className = 'round-result';
 
             if (i < currentStageResults.length) {
-                const rate = currentStageResults[i];
-                roundDiv.textContent = `R${i + 1}: ${rate}%`;
-                if (rate === 100) {
+                const result = currentStageResults[i];
+                roundDiv.textContent = `R${i + 1}: ${result.matches}/${result.total}`;
+                if (result.matches === result.total) {
                     roundDiv.classList.add('perfect');
-                } else if (rate >= 80) {
+                } else if (result.matches >= result.total * 0.8) {
                     roundDiv.classList.add('high');
-                } else if (rate >= 50) {
+                } else if (result.matches >= result.total * 0.5) {
                     roundDiv.classList.add('medium');
                 } else {
                     roundDiv.classList.add('low');
@@ -615,10 +615,11 @@ socket.on('showRoundResults', (data) => {
     resultList.innerHTML = '';
 
     data.results.forEach(result => {
+        // 맞힌 갯수 기반으로 스타일 결정
         let rateClass = 'low';
-        if (result.matchRate === 100) rateClass = 'perfect';
-        else if (result.matchRate >= 80) rateClass = 'high';
-        else if (result.matchRate >= 50) rateClass = 'medium';
+        if (result.matches === result.total) rateClass = 'perfect';
+        else if (result.matches >= result.total * 0.8) rateClass = 'high';
+        else if (result.matches >= result.total * 0.5) rateClass = 'medium';
 
         const isMe = clientState.myTeam && result.odcId === clientState.myTeam.id;
 
@@ -628,11 +629,22 @@ socket.on('showRoundResults', (data) => {
             card.style.border = '2px solid #f39c12';
         }
 
-        // 감별사에게만 제출한 지폐 표시, 위조지폐범에게는 정답률만 표시
+        // 감별사에게는 모든 팀 지폐 표시, 위조지폐범에게는 자신의 지폐만 맞힌 위치와 함께 표시
         if (clientState.isAppraiser) {
             card.innerHTML = `
                 <h4>${result.teamName} ${isMe ? '(나)' : ''}</h4>
-                <div class="match-rate ${rateClass}">${result.matchRate}%</div>
+                <div class="match-count ${rateClass}">${result.matches}/${result.total} 맞힘</div>
+                <div class="mini-bill">
+                    <div class="result-bill" data-amount="${result.submission.amount}">
+                        ${createBillHTML(result.submission, true, result.correctPositions, true)}
+                    </div>
+                </div>
+            `;
+        } else if (isMe) {
+            // 위조지폐범 본인: 자신이 제출한 지폐에서 맞힌 위치 표시
+            card.innerHTML = `
+                <h4>${result.teamName} (나)</h4>
+                <div class="match-count ${rateClass}">${result.matches}/${result.total} 맞힘</div>
                 <div class="mini-bill">
                     <div class="result-bill" data-amount="${result.submission.amount}">
                         ${createBillHTML(result.submission, true, result.correctPositions, true)}
@@ -640,9 +652,10 @@ socket.on('showRoundResults', (data) => {
                 </div>
             `;
         } else {
+            // 다른 위조지폐범: 맞힌 갯수만 표시
             card.innerHTML = `
-                <h4>${result.teamName} ${isMe ? '(나)' : ''}</h4>
-                <div class="match-rate ${rateClass}">${result.matchRate}%</div>
+                <h4>${result.teamName}</h4>
+                <div class="match-count ${rateClass}">${result.matches}/${result.total} 맞힘</div>
             `;
         }
 
@@ -777,20 +790,20 @@ socket.on('finalResults', (data) => {
         else if (index === 1) medal = '🥈 ';
         else if (index === 2) medal = '🥉 ';
 
-        // 단계별 평균 정답률 표시
-        const stage1Avg = team.stageAvgs ? team.stageAvgs.stage1 : 0;
-        const stage2Avg = team.stageAvgs ? team.stageAvgs.stage2 : 0;
-        const stage3Avg = team.stageAvgs ? team.stageAvgs.stage3 : 0;
+        // 단계별 맞힌 갯수 표시
+        const stage1 = team.stageResults ? team.stageResults.stage1 : { matches: 0, total: 0 };
+        const stage2 = team.stageResults ? team.stageResults.stage2 : { matches: 0, total: 0 };
+        const stage3 = team.stageResults ? team.stageResults.stage3 : { matches: 0, total: 0 };
 
         card.innerHTML = `
             <div class="rank">${medal}${index + 1}위</div>
             <h3>${team.name} ${isMe ? '(나)' : ''}</h3>
-            <div class="score">총 평균 정답률: <strong>${team.avgScore}%</strong></div>
+            <div class="score">총 맞힌 갯수: <strong>${team.totalMatches}/${team.totalQuestions}</strong></div>
             <div class="perfect-count">완벽 라운드: ${team.perfectRounds}/15</div>
             <div class="stage-breakdown">
-                <div class="stage-result">1단계: ${stage1Avg}%</div>
-                <div class="stage-result">2단계: ${stage2Avg}%</div>
-                <div class="stage-result">3단계: ${stage3Avg}%</div>
+                <div class="stage-result">1단계: ${stage1.matches}/${stage1.total} 맞힘</div>
+                <div class="stage-result">2단계: ${stage2.matches}/${stage2.total} 맞힘</div>
+                <div class="stage-result">3단계: ${stage3.matches}/${stage3.total} 맞힘</div>
             </div>
         `;
 

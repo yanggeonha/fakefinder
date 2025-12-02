@@ -37,8 +37,8 @@ function createEmptyBill() {
     };
 }
 
-// 일치율 계산 및 맞은 위치 반환
-function calculateMatchRate(original, submitted) {
+// 일치 계산 및 맞은 위치 반환
+function calculateMatch(original, submitted) {
     let matches = 0;
     let total = 0;
     const correctPositions = [];
@@ -61,8 +61,7 @@ function calculateMatchRate(original, submitted) {
         matches++;
     }
 
-    const matchRate = total === 0 ? 0 : Math.round((matches / total) * 100);
-    return { matchRate, correctPositions, amountCorrect };
+    return { matches, total, correctPositions, amountCorrect };
 }
 
 // 감별사가 사용한 요소 추출 (고유한 요소 타입만)
@@ -137,18 +136,19 @@ function showRoundResults() {
     gameState.teams.forEach(team => {
         if (team.role === 'counterfeiter') {
             const submission = gameState.submissions[team.id] || createEmptyBill();
-            const { matchRate, correctPositions, amountCorrect } = calculateMatchRate(gameState.originalBill, submission);
+            const { matches, total, correctPositions, amountCorrect } = calculateMatch(gameState.originalBill, submission);
 
-            // 라운드 결과 저장
+            // 라운드 결과 저장 (맞힌 갯수/총 갯수)
             if (!gameState.roundResults[team.id]) {
                 gameState.roundResults[team.id] = { stage1: [], stage2: [], stage3: [] };
             }
-            gameState.roundResults[team.id][`stage${gameState.currentStage}`].push(matchRate);
+            gameState.roundResults[team.id][`stage${gameState.currentStage}`].push({ matches, total });
 
             results.push({
                 odcId: team.id,
                 teamName: team.name,
-                matchRate: matchRate,
+                matches: matches,
+                total: total,
                 submission: submission,
                 correctPositions: correctPositions,
                 amountCorrect: amountCorrect
@@ -162,7 +162,8 @@ function showRoundResults() {
         creator: creator,
         originalBill: gameState.originalBill,
         results: results,
-        roundResults: gameState.roundResults
+        roundResults: gameState.roundResults,
+        totalElements: gameState.totalElementCount
     });
 }
 
@@ -359,29 +360,35 @@ io.on('connection', (socket) => {
                     .map(team => {
                         const results = gameState.roundResults[team.id];
                         const allRounds = [...results.stage1, ...results.stage2, ...results.stage3];
-                        const perfectRounds = allRounds.filter(r => r === 100).length;
-                        const avgScore = allRounds.length > 0
-                            ? Math.round(allRounds.reduce((a, b) => a + b, 0) / allRounds.length)
-                            : 0;
 
-                        // 단계별 평균 계산
-                        const stage1Avg = results.stage1.length > 0
-                            ? Math.round(results.stage1.reduce((a, b) => a + b, 0) / results.stage1.length) : 0;
-                        const stage2Avg = results.stage2.length > 0
-                            ? Math.round(results.stage2.reduce((a, b) => a + b, 0) / results.stage2.length) : 0;
-                        const stage3Avg = results.stage3.length > 0
-                            ? Math.round(results.stage3.reduce((a, b) => a + b, 0) / results.stage3.length) : 0;
+                        // 총 맞힌 갯수와 총 문제 수 계산
+                        const totalMatches = allRounds.reduce((sum, r) => sum + r.matches, 0);
+                        const totalQuestions = allRounds.reduce((sum, r) => sum + r.total, 0);
+                        const perfectRounds = allRounds.filter(r => r.matches === r.total).length;
+
+                        // 단계별 맞힌 갯수 계산
+                        const stage1Matches = results.stage1.reduce((sum, r) => sum + r.matches, 0);
+                        const stage1Total = results.stage1.reduce((sum, r) => sum + r.total, 0);
+                        const stage2Matches = results.stage2.reduce((sum, r) => sum + r.matches, 0);
+                        const stage2Total = results.stage2.reduce((sum, r) => sum + r.total, 0);
+                        const stage3Matches = results.stage3.reduce((sum, r) => sum + r.matches, 0);
+                        const stage3Total = results.stage3.reduce((sum, r) => sum + r.total, 0);
 
                         return {
                             id: team.id,
                             name: team.name,
+                            totalMatches: totalMatches,
+                            totalQuestions: totalQuestions,
                             perfectRounds: perfectRounds,
-                            avgScore: avgScore,
                             roundResults: results,
-                            stageAvgs: { stage1: stage1Avg, stage2: stage2Avg, stage3: stage3Avg }
+                            stageResults: {
+                                stage1: { matches: stage1Matches, total: stage1Total },
+                                stage2: { matches: stage2Matches, total: stage2Total },
+                                stage3: { matches: stage3Matches, total: stage3Total }
+                            }
                         };
                     })
-                    .sort((a, b) => b.perfectRounds - a.perfectRounds || b.avgScore - a.avgScore);
+                    .sort((a, b) => b.totalMatches - a.totalMatches || b.perfectRounds - a.perfectRounds);
 
                 io.emit('finalResults', {
                     scores: finalScores,

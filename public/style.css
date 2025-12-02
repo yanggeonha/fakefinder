@@ -878,26 +878,31 @@ body {
     margin-bottom: 15px;
 }
 
-.result-card .match-rate {
+.result-card .match-rate,
+.result-card .match-count {
     font-size: 2.5rem;
     font-weight: bold;
     margin-bottom: 10px;
 }
 
-.result-card .match-rate.perfect {
+.result-card .match-rate.perfect,
+.result-card .match-count.perfect {
     color: #27ae60;
     text-shadow: 0 0 20px rgba(39, 174, 96, 0.5);
 }
 
-.result-card .match-rate.high {
+.result-card .match-rate.high,
+.result-card .match-count.high {
     color: #2ecc71;
 }
 
-.result-card .match-rate.medium {
+.result-card .match-rate.medium,
+.result-card .match-count.medium {
     color: #f39c12;
 }
 
-.result-card .match-rate.low {
+.result-card .match-rate.low,
+.result-card .match-count.low {
     color: #e74c3c;
 }
 
