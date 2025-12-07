@@ -241,22 +241,19 @@ function createBillGrid(editable = true, correctPositions = []) {
 }
 
 // 요소 패널 업데이트
-function updateElementPanel(allowedElements = null) {
+function updateElementPanel() {
     const panel = document.getElementById('elementPanel');
     const elementsDiv = panel.querySelector('.elements');
     elementsDiv.innerHTML = '';
 
     const allElements = ['portrait', 'logo', 'watermark', 'serial', 'pattern', 'stamp'];
-    const elementsToShow = allowedElements || allElements;
+    // 위조지폐범은 감별사가 사용한 요소만 표시
+    const elementsToShow = clientState.isAppraiser ? allElements : clientState.usedElements;
 
     // 패널 제목 업데이트
     const title = document.getElementById('elementPanelTitle');
     if (title) {
-        if (clientState.isAppraiser) {
-            title.textContent = '배치할 요소 선택 (제한 없음)';
-        } else {
-            title.textContent = '배치할 요소 선택 (각 요소는 1개씩만)';
-        }
+        title.textContent = '배치할 요소 선택 (각 요소는 1개씩만)';
     }
 
     elementsToShow.forEach(element => {
@@ -265,13 +262,11 @@ function updateElementPanel(allowedElements = null) {
         btn.dataset.element = element;
         btn.onclick = () => selectElement(element);
 
-        // 위조지폐제작자만 이미 배치된 요소 비활성화 (감별사는 제한 없음)
-        if (!clientState.isAppraiser) {
-            const isUsed = clientState.currentBill.grid.includes(element);
-            if (isUsed) {
-                btn.classList.add('used');
-                btn.disabled = true;
-            }
+        // 이미 배치된 요소는 비활성화 (감별사, 위조지폐범 모두)
+        const isUsed = clientState.currentBill.grid.includes(element);
+        if (isUsed) {
+            btn.classList.add('used');
+            btn.disabled = true;
         }
 
         btn.innerHTML = `${elementIcons[element]} ${elementNames[element]}`;
@@ -292,8 +287,8 @@ function updateElementPanel(allowedElements = null) {
 
 // 요소 선택
 function selectElement(element) {
-    // 위조지폐제작자만 이미 배치된 요소 선택 불가 (감별사는 제한 없음)
-    if (!clientState.isAppraiser && clientState.currentBill.grid.includes(element)) {
+    // 이미 배치된 요소는 선택 불가 (감별사, 위조지폐범 모두)
+    if (clientState.currentBill.grid.includes(element)) {
         showToast('이미 배치된 요소입니다!');
         return;
     }
@@ -316,7 +311,7 @@ function placeElement(index) {
     if (clientState.currentBill.grid[index] !== null) {
         clientState.currentBill.grid[index] = null;
         createBillGrid(true);
-        updateElementPanel(clientState.isAppraiser ? null : clientState.usedElements);
+        updateElementPanel();
         return;
     }
 
@@ -326,14 +321,11 @@ function placeElement(index) {
         return;
     }
 
-    // 위조지폐범만 요소 1개씩 제한 (감별사는 제한 없음)
-    if (!clientState.isAppraiser) {
-        // 이미 다른 곳에 배치된 요소인지 확인
-        const existingIndex = clientState.currentBill.grid.indexOf(clientState.selectedElement);
-        if (existingIndex !== -1) {
-            // 기존 위치에서 제거
-            clientState.currentBill.grid[existingIndex] = null;
-        }
+    // 이미 배치된 요소는 다시 배치 불가 (감별사, 위조지폐범 모두)
+    if (clientState.currentBill.grid.includes(clientState.selectedElement)) {
+        showToast('이미 배치된 요소입니다!');
+        clientState.selectedElement = null;
+        return;
     }
 
     // 새 위치에 배치
@@ -341,7 +333,7 @@ function placeElement(index) {
 
     clientState.selectedElement = null;
     createBillGrid(true);
-    updateElementPanel(clientState.isAppraiser ? null : clientState.usedElements);
+    updateElementPanel();
 }
 
 // 제출
@@ -584,7 +576,7 @@ function setupCreatingPhase(creator, stage, round) {
         document.getElementById('submitBtn').style.display = 'inline-block';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('alreadySubmitted').style.display = 'none';
-        updateElementPanel(null); // 모든 요소 사용 가능
+        updateElementPanel(); // 요소 패널 업데이트
         createBillGrid(true);
     } else {
         // 위조지폐범 - 대기
@@ -631,7 +623,7 @@ socket.on('guessingPhase', (data) => {
         document.getElementById('submitBtn').style.display = 'inline-block';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('alreadySubmitted').style.display = 'none';
-        updateElementPanel(clientState.usedElements); // 감별사가 사용한 요소만
+        updateElementPanel(); // 감별사가 사용한 요소만
         createBillGrid(true);
     }
 
@@ -832,7 +824,7 @@ socket.on('newRoundGuessing', (data) => {
         document.getElementById('submitBtn').style.display = 'inline-block';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('alreadySubmitted').style.display = 'none';
-        updateElementPanel(data.usedElements);
+        updateElementPanel();
         createBillGrid(true);
     }
 
