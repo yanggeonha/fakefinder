@@ -50,6 +50,196 @@ body {
     }
 }
 
+/* 메인 화면 (방 생성/찾기) */
+#main {
+    text-align: center;
+    padding-top: 80px;
+}
+
+#main h1 {
+    font-size: 3rem;
+    margin-bottom: 10px;
+    background: linear-gradient(45deg, #f39c12, #e74c3c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.main-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 50px;
+    flex-wrap: wrap;
+    padding: 0 20px;
+}
+
+.main-card {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 40px 50px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+    min-width: 280px;
+    max-width: 350px;
+}
+
+.main-card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+}
+
+.create-room-card:hover {
+    background: rgba(155, 89, 182, 0.3);
+    border: 2px solid #9b59b6;
+}
+
+.join-room-card:hover {
+    background: rgba(231, 76, 60, 0.3);
+    border: 2px solid #e74c3c;
+}
+
+.main-card .card-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+}
+
+.main-card h2 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+}
+
+.main-card p {
+    color: #aaa;
+    font-size: 0.95rem;
+}
+
+/* 방 생성/찾기 화면 */
+#createRoom, #joinRoom {
+    text-align: center;
+    padding-top: 80px;
+}
+
+#createRoom h1, #joinRoom h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    background: linear-gradient(45deg, #f39c12, #e74c3c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.room-setup {
+    max-width: 400px;
+    margin: 40px auto;
+    padding: 30px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+}
+
+.room-setup input {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    text-align: center;
+}
+
+.room-setup input::placeholder {
+    color: #888;
+}
+
+#pinInput {
+    font-size: 1.8rem;
+    letter-spacing: 8px;
+    font-weight: bold;
+}
+
+.create-btn, .join-btn {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s;
+    margin-bottom: 10px;
+}
+
+.create-btn {
+    background: linear-gradient(45deg, #9b59b6, #8e44ad);
+    color: white;
+}
+
+.join-btn {
+    background: linear-gradient(45deg, #e74c3c, #c0392b);
+    color: white;
+}
+
+.create-btn:hover, .join-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.back-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 1rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    cursor: pointer;
+    background: transparent;
+    color: #aaa;
+    transition: all 0.3s;
+}
+
+.back-btn:hover {
+    border-color: #fff;
+    color: #fff;
+}
+
+/* 핀번호 표시 */
+.pin-display {
+    background: rgba(243, 156, 18, 0.2);
+    border: 2px solid #f39c12;
+    padding: 15px 30px;
+    border-radius: 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.pin-display span {
+    font-size: 1.1rem;
+    color: #f39c12;
+}
+
+.pin-display strong {
+    font-size: 2rem;
+    letter-spacing: 5px;
+    color: #fff;
+}
+
+.copy-btn {
+    padding: 8px 15px;
+    font-size: 0.9rem;
+    background: #f39c12;
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.copy-btn:hover {
+    background: #e67e22;
+}
+
 /* 로비 화면 */
 #lobby {
     text-align: center;
@@ -57,8 +247,8 @@ body {
 }
 
 #lobby h1 {
-    font-size: 3rem;
-    margin-bottom: 10px;
+    font-size: 2.5rem;
+    margin-bottom: 15px;
     background: linear-gradient(45deg, #f39c12, #e74c3c);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;

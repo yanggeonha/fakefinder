@@ -27,8 +27,61 @@ const clientState = {
     totalElementCount: 0,   // 감별사가 배치한 총 요소 개수
     roundResults: {},       // 각 팀 라운드별 결과
     currentStage: 1,
-    currentRound: 1
+    currentRound: 1,
+    pinCode: null           // 현재 방 핀번호
 };
+
+// ===== 화면 전환 함수 =====
+function showMain() {
+    showScreen('main');
+}
+
+function showCreateRoom() {
+    showScreen('createRoom');
+    document.getElementById('hostNameInput').focus();
+}
+
+function showJoinRoom() {
+    showScreen('joinRoom');
+    document.getElementById('pinInput').focus();
+}
+
+// 방 생성
+function createRoom() {
+    const name = document.getElementById('hostNameInput').value.trim();
+    if (!name) {
+        showToast('이름을 입력해주세요!');
+        return;
+    }
+    socket.emit('createRoom', { name: name });
+}
+
+// 방 참가
+function joinRoom() {
+    const pinCode = document.getElementById('pinInput').value.trim();
+    const name = document.getElementById('playerNameInput').value.trim();
+
+    if (!pinCode || pinCode.length !== 6) {
+        showToast('6자리 핀번호를 입력해주세요!');
+        return;
+    }
+    if (!name) {
+        showToast('닉네임을 입력해주세요!');
+        return;
+    }
+
+    socket.emit('joinRoom', { pinCode: pinCode, name: name });
+}
+
+// 핀번호 복사
+function copyPinCode() {
+    const pinCode = document.getElementById('roomPinCode').textContent;
+    navigator.clipboard.writeText(pinCode).then(() => {
+        showToast('핀번호가 복사되었습니다!');
+    }).catch(() => {
+        showToast('복사 실패');
+    });
+}
 
 // 요소 아이콘 매핑
 const elementIcons = {
@@ -108,39 +161,24 @@ function updateTeamList(teams) {
         `;
     }).join('');
 
-    // 시작 버튼 상태 (감별사에게만 보임)
+    // 시작 버튼 상태 (감별사/방장에게만 보임)
     const btn = document.getElementById('startGameBtn');
-    const hasAppraiser = teams.some(t => t.role === 'appraiser');
     const hasCounterfeiter = teams.some(t => t.role === 'counterfeiter');
-    const canStart = hasAppraiser && hasCounterfeiter;
 
-    // 감별사인 경우에만 버튼 표시
-    if (clientState.myTeam && clientState.myTeam.role === 'appraiser') {
+    // 감별사(방장)인 경우에만 버튼 표시
+    if (clientState.isAppraiser) {
         btn.style.display = 'inline-block';
-        btn.disabled = !canStart;
+        btn.disabled = !hasCounterfeiter;
         if (!hasCounterfeiter) {
             btn.textContent = '게임 시작 (위조지폐범 필요)';
         } else {
-            btn.textContent = '게임 시작!';
+            btn.textContent = `게임 시작! (${teams.length - 1}명 참가)`;
         }
     } else {
         btn.style.display = 'none';
     }
 }
 
-// 팀 입장
-function joinTeam(role) {
-    const nameInput = document.getElementById('teamNameInput');
-    const teamName = nameInput.value.trim();
-
-    if (!teamName) {
-        showToast('팀 이름을 입력해주세요!');
-        return;
-    }
-
-    console.log('팀 입장 시도:', teamName, '역할:', role);
-    socket.emit('joinTeam', { name: teamName, role: role });
-}
 
 // 게임 시작
 function startGame() {
@@ -431,40 +469,63 @@ function createBillHTML(bill, small = false, correctPositions = [], showCorrect 
 
 // ===== Socket.io 이벤트 핸들러 =====
 
-// 초기 게임 상태 수신
-socket.on('gameState', (data) => {
-    console.log('게임 상태 수신:', data);
-    updateTeamList(data.teams);
-    clientState.roundResults = data.roundResults || {};
-    clientState.currentStage = data.currentStage || 1;
-    clientState.currentRound = data.currentRound || 1;
-
-    if (!clientState.myTeam) {
-        document.getElementById('joinSection').style.display = 'block';
-        document.getElementById('joinedSection').style.display = 'none';
-    }
-
-    if (data.gameStarted) {
-        showToast('게임이 진행 중입니다!');
-    }
-});
-
 // 에러 처리
 socket.on('error', (message) => {
     showToast(message);
 });
 
-// 본인 입장 성공
-socket.on('joinSuccess', (data) => {
-    console.log('입장 성공:', data.team);
+// 방 생성 성공 (감별사/방장)
+socket.on('roomCreated', (data) => {
+    console.log('방 생성 성공:', data);
+    clientState.pinCode = data.pinCode;
     clientState.myTeam = data.team;
-    document.getElementById('joinSection').style.display = 'none';
-    document.getElementById('joinedSection').style.display = 'block';
-    document.getElementById('myTeamName').textContent = clientState.myTeam.name;
-    document.getElementById('myRole').textContent =
-        clientState.myTeam.role === 'appraiser' ? '감별사' : '위조지폐범';
+    clientState.isAppraiser = true;
+
+    document.getElementById('roomPinCode').textContent = data.pinCode;
+    document.getElementById('myTeamName').textContent = data.team.name;
+    document.getElementById('myRole').textContent = '감별사 (방장)';
+
+    updateTeamList([data.team]);
+    showScreen('lobby');
+    showToast(`방이 생성되었습니다! 핀번호: ${data.pinCode}`);
+});
+
+// 방 입장 성공 (위조지폐범)
+socket.on('joinSuccess', (data) => {
+    console.log('입장 성공:', data);
+    clientState.pinCode = data.pinCode;
+    clientState.myTeam = data.team;
+    clientState.isAppraiser = false;
+
+    document.getElementById('roomPinCode').textContent = data.pinCode;
+    document.getElementById('myTeamName').textContent = data.team.name;
+    document.getElementById('myRole').textContent = '위조지폐범';
+
+    showScreen('lobby');
     showToast('입장 완료!');
 });
+
+// 방이 닫힘 (방장 퇴장)
+socket.on('roomClosed', (message) => {
+    showToast(message);
+    resetClientState();
+    showScreen('main');
+});
+
+// 클라이언트 상태 초기화
+function resetClientState() {
+    clientState.myTeam = null;
+    clientState.teams = [];
+    clientState.isAppraiser = false;
+    clientState.hasSubmitted = false;
+    clientState.currentBill = createEmptyBill();
+    clientState.usedElements = [];
+    clientState.totalElementCount = 0;
+    clientState.roundResults = {};
+    clientState.currentStage = 1;
+    clientState.currentRound = 1;
+    clientState.pinCode = null;
+}
 
 // 팀 목록 업데이트
 socket.on('teamListUpdated', (data) => {
@@ -816,10 +877,7 @@ socket.on('finalResults', (data) => {
 });
 
 // 게임 리셋
-socket.on('gameReset', () => {
-    clientState.myTeam = null;
-    clientState.teams = [];
-    clientState.isAppraiser = false;
+socket.on('gameReset', (data) => {
     clientState.hasSubmitted = false;
     clientState.currentBill = createEmptyBill();
     clientState.usedElements = [];
@@ -828,11 +886,11 @@ socket.on('gameReset', () => {
     clientState.currentStage = 1;
     clientState.currentRound = 1;
 
-    document.getElementById('joinSection').style.display = 'block';
-    document.getElementById('joinedSection').style.display = 'none';
-    document.getElementById('teamNameInput').value = '';
+    // 팀 목록 업데이트 (감별사만 남아있음)
+    if (data && data.teams) {
+        updateTeamList(data.teams);
+    }
 
-    updateTeamList([]);
     showScreen('lobby');
 });
 

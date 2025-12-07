@@ -7,35 +7,74 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- 로비 화면 -->
-    <div id="lobby" class="screen active">
+    <!-- 메인 화면 (방 생성/찾기) -->
+    <div id="main" class="screen active">
         <h1>위조지폐 찾기 게임</h1>
         <p class="subtitle">감별사 vs 위조지폐범 - 실시간 멀티플레이어 추리 게임</p>
 
-        <div class="lobby-content">
-            <div class="team-setup" id="joinSection">
-                <h2>팀 입장</h2>
-                <input type="text" id="teamNameInput" placeholder="팀 이름을 입력하세요" maxlength="10">
-                <div class="role-buttons">
-                    <button class="role-btn appraiser-btn" onclick="joinTeam('appraiser')">감별사 (선생님)</button>
-                    <button class="role-btn counterfeiter-btn" onclick="joinTeam('counterfeiter')">위조지폐범</button>
-                </div>
+        <div class="main-buttons">
+            <div class="main-card create-room-card" onclick="showCreateRoom()">
+                <div class="card-icon">🏠</div>
+                <h2>방 생성하기</h2>
+                <p>선생님용 - 새로운 게임 방을 만들고 감별사가 됩니다</p>
             </div>
+            <div class="main-card join-room-card" onclick="showJoinRoom()">
+                <div class="card-icon">🔍</div>
+                <h2>방 찾기</h2>
+                <p>학생용 - 핀번호를 입력하여 게임에 참가합니다</p>
+            </div>
+        </div>
+    </div>
 
-            <div class="team-setup joined-info" id="joinedSection" style="display: none;">
+    <!-- 방 생성 화면 -->
+    <div id="createRoom" class="screen">
+        <h1>방 생성하기</h1>
+        <p class="subtitle">새로운 게임 방을 만듭니다 (감별사 역할)</p>
+
+        <div class="room-setup">
+            <input type="text" id="hostNameInput" placeholder="선생님 이름 (예: 1반 선생님)" maxlength="15">
+            <button class="create-btn" onclick="createRoom()">방 만들기</button>
+            <button class="back-btn" onclick="showMain()">뒤로가기</button>
+        </div>
+    </div>
+
+    <!-- 방 찾기 화면 -->
+    <div id="joinRoom" class="screen">
+        <h1>방 찾기</h1>
+        <p class="subtitle">핀번호를 입력하여 게임에 참가합니다</p>
+
+        <div class="room-setup">
+            <input type="text" id="pinInput" placeholder="6자리 핀번호" maxlength="6" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+            <input type="text" id="playerNameInput" placeholder="닉네임" maxlength="10">
+            <button class="join-btn" onclick="joinRoom()">입장하기</button>
+            <button class="back-btn" onclick="showMain()">뒤로가기</button>
+        </div>
+    </div>
+
+    <!-- 로비 화면 -->
+    <div id="lobby" class="screen">
+        <h1>위조지폐 찾기 게임</h1>
+        <div class="pin-display">
+            <span>핀번호:</span>
+            <strong id="roomPinCode">000000</strong>
+            <button class="copy-btn" onclick="copyPinCode()">복사</button>
+        </div>
+
+        <div class="lobby-content">
+            <div class="team-setup joined-info" id="joinedSection">
                 <h2>입장 완료!</h2>
-                <p>팀 이름: <strong id="myTeamName"></strong></p>
+                <p>이름: <strong id="myTeamName"></strong></p>
                 <p>역할: <strong id="myRole"></strong></p>
                 <p class="waiting-msg">다른 팀들을 기다리는 중...</p>
             </div>
 
             <div class="team-list">
-                <h3>참가 팀 (<span id="teamCount">0</span>/10)</h3>
+                <h3>참가자 (<span id="teamCount">0</span>/30)</h3>
                 <ul id="teamList"></ul>
             </div>
 
             <button id="startGameBtn" class="start-btn" onclick="startGame()" disabled style="display: none;">
-                게임 시작 (감별사 + 위조지폐범 필요)
+                게임 시작 (위조지폐범 필요)
             </button>
         </div>
     </div>
