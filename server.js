@@ -36,7 +36,7 @@ function createGameState() {
         submissions: {},
         roundResults: {},   // 각 팀별 라운드 결과 저장
         timerInterval: null,
-        timeLeft: 30,
+        timeLeft: 60,
         gameStarted: false,
         usedElements: [],    // 감별사가 사용한 요소들 (고유 타입)
         totalElementCount: 0, // 감별사가 배치한 총 요소 개수
@@ -127,7 +127,7 @@ function startTimer(pinCode) {
     const gameState = rooms[pinCode];
     if (!gameState) return;
 
-    gameState.timeLeft = 30;
+    gameState.timeLeft = 60;
     io.to(pinCode).emit('timerUpdate', gameState.timeLeft);
 
     gameState.timerInterval = setInterval(() => {
@@ -347,7 +347,7 @@ io.on('connection', (socket) => {
             usedElements: gameState.usedElements,
             elementCount: gameState.usedElements.length,
             totalElementCount: gameState.totalElementCount,
-            timeLeft: 30
+            timeLeft: 60
         });
 
         startTimer(pinCode);

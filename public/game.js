@@ -200,13 +200,20 @@ function createBillGrid(editable = true, correctPositions = []) {
             cell.classList.add('correct');
         }
 
+        // 편집 모드일 때만 클릭 이벤트 추가
         if (editable) {
             cell.onclick = () => placeElement(i);
+            cell.style.cursor = 'pointer';
         }
 
         if (clientState.currentBill.grid[i]) {
             cell.classList.add('filled');
             cell.textContent = elementIcons[clientState.currentBill.grid[i]];
+
+            // 배치된 요소는 editable 모드에서 항상 클릭 가능 (제거용)
+            if (editable) {
+                cell.title = '클릭하면 제거됩니다';
+            }
         }
 
         grid.appendChild(cell);
@@ -305,28 +312,32 @@ function selectElement(element) {
 
 // 요소 배치
 function placeElement(index) {
+    // 이미 요소가 있는 칸을 클릭하면 바로 제거 (요소 선택 필요 없음)
+    if (clientState.currentBill.grid[index] !== null) {
+        clientState.currentBill.grid[index] = null;
+        createBillGrid(true);
+        updateElementPanel(clientState.isAppraiser ? null : clientState.usedElements);
+        return;
+    }
+
+    // 요소가 선택되지 않은 상태에서 빈 칸 클릭
     if (!clientState.selectedElement) {
         showToast('먼저 배치할 요소를 선택해주세요!');
         return;
     }
 
-    // 같은 위치에 같은 요소가 있으면 제거
-    if (clientState.currentBill.grid[index] === clientState.selectedElement) {
-        clientState.currentBill.grid[index] = null;
-    } else {
-        // 위조지폐제작자만 요소 1개씩 제한 (감별사는 제한 없음)
-        if (!clientState.isAppraiser) {
-            // 이미 다른 곳에 배치된 요소인지 확인
-            const existingIndex = clientState.currentBill.grid.indexOf(clientState.selectedElement);
-            if (existingIndex !== -1) {
-                // 기존 위치에서 제거
-                clientState.currentBill.grid[existingIndex] = null;
-            }
+    // 위조지폐범만 요소 1개씩 제한 (감별사는 제한 없음)
+    if (!clientState.isAppraiser) {
+        // 이미 다른 곳에 배치된 요소인지 확인
+        const existingIndex = clientState.currentBill.grid.indexOf(clientState.selectedElement);
+        if (existingIndex !== -1) {
+            // 기존 위치에서 제거
+            clientState.currentBill.grid[existingIndex] = null;
         }
-
-        // 새 위치에 배치 (기존 요소 덮어쓰기)
-        clientState.currentBill.grid[index] = clientState.selectedElement;
     }
+
+    // 새 위치에 배치
+    clientState.currentBill.grid[index] = clientState.selectedElement;
 
     clientState.selectedElement = null;
     createBillGrid(true);
