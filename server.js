@@ -13,6 +13,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // 방(Room) 관리
 const rooms = {}; // { pinCode: gameState }
 
+// 세션 관리 (재접속용)
+const sessions = {}; // { sessionId: { pinCode, odcId, odcName, team } }
+
 // 6자리 핀번호 생성
 function generatePinCode() {
     let pin;
@@ -20,6 +23,11 @@ function generatePinCode() {
         pin = Math.floor(100000 + Math.random() * 900000).toString();
     } while (rooms[pin]); // 중복 방지
     return pin;
+}
+
+// 세션 ID 생성
+function generateSessionId() {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
 // 새 게임 상태 생성
@@ -196,16 +204,95 @@ function showRoundResults(pinCode) {
 io.on('connection', (socket) => {
     console.log('새 연결:', socket.id);
 
+    // 세션 복구 시도
+    socket.on('rejoin', (data) => {
+        const { sessionId } = data;
+        const session = sessions[sessionId];
+
+        if (!session) {
+            socket.emit('rejoinFailed', '세션이 만료되었습니다.');
+            return;
+        }
+
+        const gameState = rooms[session.pinCode];
+        if (!gameState) {
+            delete sessions[sessionId];
+            socket.emit('rejoinFailed', '방이 종료되었습니다.');
+            return;
+        }
+
+        // 기존 팀 찾기
+        const existingTeam = gameState.teams.find(t => t.sessionId === sessionId);
+        if (!existingTeam) {
+            delete sessions[sessionId];
+            socket.emit('rejoinFailed', '팀 정보를 찾을 수 없습니다.');
+            return;
+        }
+
+        // 소켓 ID 업데이트
+        const oldSocketId = existingTeam.id;
+        existingTeam.id = socket.id;
+
+        // 방장인 경우 hostId도 업데이트
+        if (gameState.hostId === oldSocketId) {
+            gameState.hostId = socket.id;
+        }
+
+        // roundResults 키 업데이트
+        if (gameState.roundResults[oldSocketId]) {
+            gameState.roundResults[socket.id] = gameState.roundResults[oldSocketId];
+            delete gameState.roundResults[oldSocketId];
+        }
+
+        // submissions 키 업데이트
+        if (gameState.submissions[oldSocketId]) {
+            gameState.submissions[socket.id] = gameState.submissions[oldSocketId];
+            delete gameState.submissions[oldSocketId];
+        }
+
+        // 세션 업데이트
+        session.odcId = socket.id;
+
+        // 방에 다시 참가
+        socket.join(session.pinCode);
+        socket.pinCode = session.pinCode;
+        socket.team = existingTeam;
+        socket.sessionId = sessionId;
+
+        // 현재 게임 상태 전송
+        socket.emit('rejoinSuccess', {
+            pinCode: session.pinCode,
+            team: existingTeam,
+            sessionId: sessionId,
+            gameState: {
+                phase: gameState.phase,
+                currentStage: gameState.currentStage,
+                currentRound: gameState.currentRound,
+                teams: gameState.teams,
+                usedElements: gameState.usedElements,
+                totalElementCount: gameState.totalElementCount,
+                roundResults: gameState.roundResults,
+                timeLeft: gameState.timeLeft,
+                originalBill: existingTeam.role === 'appraiser' ? gameState.originalBill : null,
+                hasSubmitted: !!gameState.submissions[socket.id]
+            }
+        });
+
+        console.log(`[${session.pinCode}] ${existingTeam.name} 재접속 성공`);
+    });
+
     // 방 생성 (감별사/방장)
     socket.on('createRoom', (data) => {
         const pinCode = generatePinCode();
         const gameState = createGameState();
+        const sessionId = generateSessionId();
 
         // 방장을 감별사로 설정
         const team = {
             id: socket.id,
             name: data.name || '감별사',
-            role: 'appraiser'
+            role: 'appraiser',
+            sessionId: sessionId
         };
 
         gameState.teams.push(team);
@@ -214,13 +301,23 @@ io.on('connection', (socket) => {
 
         rooms[pinCode] = gameState;
 
+        // 세션 저장
+        sessions[sessionId] = {
+            pinCode: pinCode,
+            odcId: socket.id,
+            odcName: team.name,
+            team: team
+        };
+
         socket.join(pinCode);
         socket.pinCode = pinCode;
         socket.team = team;
+        socket.sessionId = sessionId;
 
         socket.emit('roomCreated', {
             pinCode: pinCode,
-            team: team
+            team: team,
+            sessionId: sessionId
         });
 
         console.log(`방 생성: ${pinCode}, 방장: ${team.name}`);
@@ -251,23 +348,36 @@ io.on('connection', (socket) => {
             return;
         }
 
+        const sessionId = generateSessionId();
+
         // 위조지폐범으로 입장
         const team = {
             id: socket.id,
             name: data.name,
-            role: 'counterfeiter'
+            role: 'counterfeiter',
+            sessionId: sessionId
         };
 
         gameState.teams.push(team);
         gameState.roundResults[team.id] = { stage1: [], stage2: [], stage3: [] };
 
+        // 세션 저장
+        sessions[sessionId] = {
+            pinCode: pinCode,
+            odcId: socket.id,
+            odcName: team.name,
+            team: team
+        };
+
         socket.join(pinCode);
         socket.pinCode = pinCode;
         socket.team = team;
+        socket.sessionId = sessionId;
 
         socket.emit('joinSuccess', {
             pinCode: pinCode,
-            team: team
+            team: team,
+            sessionId: sessionId
         });
 
         // 같은 방 모든 클라이언트에게 팀 목록 업데이트
@@ -525,48 +635,104 @@ io.on('connection', (socket) => {
         console.log(`[${pinCode}] 게임이 재시작되었습니다.`);
     });
 
-    // 연결 해제
+    // 연결 해제 - 세션은 유지하고 일정 시간 후 정리
     socket.on('disconnect', () => {
         console.log('연결 해제:', socket.id);
 
         const pinCode = socket.pinCode;
+        const sessionId = socket.sessionId;
+
         if (!pinCode) return;
 
         const gameState = rooms[pinCode];
         if (!gameState) return;
 
-        const index = gameState.teams.findIndex(t => t.id === socket.id);
-        if (index !== -1) {
-            const team = gameState.teams[index];
-            gameState.teams.splice(index, 1);
-            delete gameState.roundResults[socket.id];
+        const team = gameState.teams.find(t => t.id === socket.id);
+        if (!team) return;
 
-            io.to(pinCode).emit('teamLeft', {
-                teams: gameState.teams,
-                leftTeam: team
-            });
+        console.log(`[${pinCode}] ${team.name} 연결 끊김 (세션 유지됨)`);
 
-            console.log(`[${pinCode}] 팀 퇴장: ${team.name}`);
+        // 게임 중이면 세션을 유지하고 재접속 대기 (3분)
+        if (gameState.gameStarted && sessionId) {
+            team.disconnectedAt = Date.now();
 
-            // 감별사(방장)가 나갔으면 방 삭제
-            if (team.role === 'appraiser') {
-                clearInterval(gameState.timerInterval);
-                io.to(pinCode).emit('roomClosed', '방장이 나가서 방이 닫혔습니다.');
-                delete rooms[pinCode];
-                console.log(`[${pinCode}] 방 삭제됨`);
-            }
+            // 3분 후에도 재접속 안하면 세션 정리
+            setTimeout(() => {
+                const currentTeam = gameState.teams.find(t => t.sessionId === sessionId);
+                if (currentTeam && currentTeam.disconnectedAt) {
+                    // 여전히 연결 안됨 - 팀 제거
+                    removeTeamFromGame(pinCode, sessionId);
+                }
+            }, 180000); // 3분
 
-            // 위조지폐범이 모두 나갔으면 게임 리셋 (방은 유지)
-            const counterfeiters = gameState.teams.filter(t => t.role === 'counterfeiter');
-            if (counterfeiters.length === 0 && gameState.gameStarted) {
-                resetGame(gameState);
-                io.to(pinCode).emit('gameReset', {
-                    teams: gameState.teams
-                });
-            }
+            return;
+        }
+
+        // 게임 시작 전이면 바로 제거
+        removeTeamFromGame(pinCode, sessionId);
+    });
+
+    // 명시적 퇴장 (사용자가 직접 나가기 버튼 클릭 시)
+    socket.on('leaveRoom', () => {
+        const pinCode = socket.pinCode;
+        const sessionId = socket.sessionId;
+
+        if (pinCode && sessionId) {
+            removeTeamFromGame(pinCode, sessionId);
         }
     });
 });
+
+// 팀을 게임에서 제거하는 함수
+function removeTeamFromGame(pinCode, sessionId) {
+    const gameState = rooms[pinCode];
+    if (!gameState) return;
+
+    const index = gameState.teams.findIndex(t => t.sessionId === sessionId);
+    if (index === -1) return;
+
+    const team = gameState.teams[index];
+    gameState.teams.splice(index, 1);
+    delete gameState.roundResults[team.id];
+
+    // 세션 삭제
+    if (sessionId && sessions[sessionId]) {
+        delete sessions[sessionId];
+    }
+
+    io.to(pinCode).emit('teamLeft', {
+        teams: gameState.teams,
+        leftTeam: team
+    });
+
+    console.log(`[${pinCode}] 팀 퇴장: ${team.name}`);
+
+    // 감별사(방장)가 나갔으면 방 삭제
+    if (team.role === 'appraiser') {
+        clearInterval(gameState.timerInterval);
+
+        // 모든 세션 정리
+        gameState.teams.forEach(t => {
+            if (t.sessionId && sessions[t.sessionId]) {
+                delete sessions[t.sessionId];
+            }
+        });
+
+        io.to(pinCode).emit('roomClosed', '방장이 나가서 방이 닫혔습니다.');
+        delete rooms[pinCode];
+        console.log(`[${pinCode}] 방 삭제됨`);
+        return;
+    }
+
+    // 위조지폐범이 모두 나갔으면 게임 리셋 (방은 유지)
+    const counterfeiters = gameState.teams.filter(t => t.role === 'counterfeiter');
+    if (counterfeiters.length === 0 && gameState.gameStarted) {
+        resetGame(gameState);
+        io.to(pinCode).emit('gameReset', {
+            teams: gameState.teams
+        });
+    }
+}
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';

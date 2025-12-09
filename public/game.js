@@ -1,19 +1,55 @@
 // Socket.io 연결
 const socket = io();
 
+// 세션 저장 키
+const SESSION_KEY = 'fakefinder_session';
+
 // 연결 상태 로깅
 socket.on('connect', () => {
     console.log('서버에 연결됨:', socket.id);
+
+    // 저장된 세션이 있으면 재접속 시도
+    const savedSession = localStorage.getItem(SESSION_KEY);
+    if (savedSession) {
+        try {
+            const session = JSON.parse(savedSession);
+            console.log('세션 복구 시도:', session.sessionId);
+            socket.emit('rejoin', { sessionId: session.sessionId });
+        } catch (e) {
+            console.error('세션 파싱 오류:', e);
+            localStorage.removeItem(SESSION_KEY);
+        }
+    }
 });
 
 socket.on('disconnect', () => {
     console.log('서버 연결 끊김');
+    showToast('연결이 끊어졌습니다. 재접속 중...');
 });
 
 socket.on('connect_error', (error) => {
     console.error('연결 오류:', error);
     showToast('서버 연결 오류!');
 });
+
+// 세션 저장 함수
+function saveSession(pinCode, team, sessionId) {
+    const session = {
+        pinCode: pinCode,
+        teamName: team.name,
+        role: team.role,
+        sessionId: sessionId,
+        savedAt: Date.now()
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    console.log('세션 저장됨:', session);
+}
+
+// 세션 삭제 함수
+function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+    console.log('세션 삭제됨');
+}
 
 // 클라이언트 상태
 const clientState = {
@@ -484,6 +520,9 @@ socket.on('roomCreated', (data) => {
     clientState.myTeam = data.team;
     clientState.isAppraiser = true;
 
+    // 세션 저장
+    saveSession(data.pinCode, data.team, data.sessionId);
+
     document.getElementById('roomPinCode').textContent = data.pinCode;
     document.getElementById('myTeamName').textContent = data.team.name;
     document.getElementById('myRole').textContent = '감별사 (방장)';
@@ -500,6 +539,9 @@ socket.on('joinSuccess', (data) => {
     clientState.myTeam = data.team;
     clientState.isAppraiser = false;
 
+    // 세션 저장
+    saveSession(data.pinCode, data.team, data.sessionId);
+
     document.getElementById('roomPinCode').textContent = data.pinCode;
     document.getElementById('myTeamName').textContent = data.team.name;
     document.getElementById('myRole').textContent = '위조지폐범';
@@ -511,9 +553,148 @@ socket.on('joinSuccess', (data) => {
 // 방이 닫힘 (방장 퇴장)
 socket.on('roomClosed', (message) => {
     showToast(message);
+    clearSession();
     resetClientState();
     showScreen('main');
 });
+
+// 재접속 성공
+socket.on('rejoinSuccess', (data) => {
+    console.log('재접속 성공:', data);
+
+    clientState.pinCode = data.pinCode;
+    clientState.myTeam = data.team;
+    clientState.isAppraiser = data.team.role === 'appraiser';
+    clientState.teams = data.gameState.teams;
+    clientState.currentStage = data.gameState.currentStage;
+    clientState.currentRound = data.gameState.currentRound;
+    clientState.roundResults = data.gameState.roundResults;
+    clientState.usedElements = data.gameState.usedElements || [];
+    clientState.totalElementCount = data.gameState.totalElementCount || 0;
+    clientState.hasSubmitted = data.gameState.hasSubmitted;
+
+    // 세션 다시 저장 (갱신)
+    saveSession(data.pinCode, data.team, data.sessionId);
+
+    document.getElementById('roomPinCode').textContent = data.pinCode;
+    document.getElementById('myTeamName').textContent = data.team.name;
+    document.getElementById('myRole').textContent = data.team.role === 'appraiser' ? '감별사 (방장)' : '위조지폐범';
+
+    showToast('재접속 성공!');
+
+    // 현재 게임 상태에 따라 화면 복원
+    restoreGameState(data.gameState);
+});
+
+// 재접속 실패
+socket.on('rejoinFailed', (message) => {
+    console.log('재접속 실패:', message);
+    clearSession();
+    showScreen('main');
+});
+
+// 게임 상태 복원 함수
+function restoreGameState(gameState) {
+    const phase = gameState.phase;
+
+    switch (phase) {
+        case 'lobby':
+            updateTeamList(gameState.teams);
+            showScreen('lobby');
+            break;
+
+        case 'creating':
+            showScreen('game');
+            const appraiser = gameState.teams.find(t => t.role === 'appraiser');
+            setupCreatingPhase(appraiser, gameState.currentStage, gameState.currentRound);
+            break;
+
+        case 'guessing':
+            showScreen('game');
+            restoreGuessingPhase(gameState);
+            break;
+
+        case 'roundResult':
+            // 결과 화면은 다음 라운드 시작 대기
+            showScreen('result');
+            document.getElementById('resultTitle').textContent =
+                `${gameState.currentStage}단계 ${gameState.currentRound}라운드 결과`;
+            if (clientState.isAppraiser) {
+                document.getElementById('nextRoundBtn').style.display = 'inline-block';
+                document.getElementById('waitingNextRoundMsg').style.display = 'none';
+            } else {
+                document.getElementById('nextRoundBtn').style.display = 'none';
+                document.getElementById('waitingNextRoundMsg').style.display = 'block';
+            }
+            break;
+
+        case 'stageWaiting':
+            showScreen('stageStart');
+            document.getElementById('stageStartTitle').textContent = `${gameState.currentStage - 1}단계 완료!`;
+            document.getElementById('stageStartSubtitle').textContent = `${gameState.currentStage}단계를 시작할 준비가 되었습니다.`;
+            if (clientState.isAppraiser) {
+                document.getElementById('startNextStageBtn').style.display = 'inline-block';
+                document.getElementById('waitingForAppraiserMsg').style.display = 'none';
+            } else {
+                document.getElementById('startNextStageBtn').style.display = 'none';
+                document.getElementById('waitingForAppraiserMsg').style.display = 'block';
+            }
+            break;
+
+        case 'final':
+            showScreen('finalResult');
+            break;
+
+        default:
+            updateTeamList(gameState.teams);
+            showScreen('lobby');
+    }
+}
+
+// 추측 단계 복원
+function restoreGuessingPhase(gameState) {
+    clientState.currentBill = createEmptyBill();
+    clientState.selectedElement = null;
+    clientState.usedElements = gameState.usedElements;
+    clientState.totalElementCount = gameState.totalElementCount;
+
+    document.getElementById('currentStage').textContent = gameState.currentStage;
+    document.getElementById('currentRound').textContent = gameState.currentRound;
+    document.getElementById('phaseText').textContent = '위조지폐 찾기 단계';
+    document.getElementById('turnInfo').textContent = `감별사의 위조지폐를 맞춰라! (${gameState.totalElementCount}개 요소)`;
+    document.getElementById('timer').textContent = gameState.timeLeft || '-';
+
+    if (clientState.isAppraiser) {
+        document.getElementById('roleInfo').textContent = '위조지폐범들이 맞추는 중...';
+        document.getElementById('roleInfo').className = 'appraiser';
+        document.getElementById('elementPanel').style.display = 'none';
+        document.getElementById('waitingMessage').style.display = 'none';
+        document.getElementById('submissionStatus').style.display = 'block';
+        document.getElementById('submitBtn').style.display = 'none';
+        createBillGrid(false);
+    } else {
+        document.getElementById('roleInfo').textContent = `위조지폐범: ${gameState.totalElementCount}개 요소의 위치를 맞추세요!`;
+        document.getElementById('roleInfo').className = 'counterfeiter';
+
+        if (gameState.hasSubmitted) {
+            document.getElementById('elementPanel').style.display = 'none';
+            document.getElementById('submitBtn').style.display = 'none';
+            document.getElementById('alreadySubmitted').style.display = 'block';
+            createBillGrid(false);
+        } else {
+            document.getElementById('elementPanel').style.display = 'block';
+            document.getElementById('submitBtn').style.display = 'inline-block';
+            document.getElementById('alreadySubmitted').style.display = 'none';
+            updateElementPanel();
+            createBillGrid(true);
+        }
+
+        document.getElementById('waitingMessage').style.display = 'none';
+        document.getElementById('submissionStatus').style.display = 'block';
+    }
+
+    updateRoundResultsPanel(gameState.roundResults);
+}
 
 // 클라이언트 상태 초기화
 function resetClientState() {
@@ -888,6 +1069,15 @@ socket.on('gameReset', (data) => {
     clientState.roundResults = {};
     clientState.currentStage = 1;
     clientState.currentRound = 1;
+
+    // 위조지폐범은 세션 삭제 (방에서 나간 것)
+    if (!clientState.isAppraiser) {
+        clearSession();
+        resetClientState();
+        showScreen('main');
+        showToast('게임이 리셋되었습니다.');
+        return;
+    }
 
     // 팀 목록 업데이트 (감별사만 남아있음)
     if (data && data.teams) {
