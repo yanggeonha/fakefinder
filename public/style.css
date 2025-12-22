@@ -56,13 +56,22 @@ body {
     padding-top: 80px;
 }
 
-#main h1 {
-    font-size: 3rem;
-    margin-bottom: 10px;
+#main .main-title {
+    font-size: 5rem;
+    margin-bottom: 5px;
     background: linear-gradient(45deg, #f39c12, #e74c3c);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    font-weight: bold;
+    letter-spacing: 10px;
+}
+
+#main .sub-title {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+    color: #ccc;
+    font-weight: normal;
 }
 
 .main-buttons {
