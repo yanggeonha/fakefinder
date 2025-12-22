@@ -1269,6 +1269,17 @@ body {
     margin-bottom: 30px;
 }
 
+/* 푸터 */
+.site-footer {
+    position: fixed;
+    bottom: 100px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #666;
+    font-size: 0.85rem;
+}
+
 /* 반응형 */
 @media (max-width: 1000px) {
     .game-main-container {
