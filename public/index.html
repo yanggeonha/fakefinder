@@ -211,6 +211,18 @@
         <button class="restart-btn" onclick="restartGame()">처음부터</button>
     </div>
 
+    <!-- 게임 중 하단 바 (핀번호 + 게임 종료) -->
+    <div id="gameBottomBar" class="game-bottom-bar">
+        <div class="bottom-bar-pin">
+            <span class="bottom-bar-label">핀번호</span>
+            <strong id="gamePinCode">000000</strong>
+            <span class="bottom-bar-hint">튕긴 친구는 이 번호로 다시 들어올 수 있어요</span>
+        </div>
+        <button id="endGameBtn" class="end-game-btn" onclick="endGame()" style="display:none;">
+            🛑 게임 종료
+        </button>
+    </div>
+
     <!-- 에러 토스트 -->
     <div id="toast" class="toast"></div>
 

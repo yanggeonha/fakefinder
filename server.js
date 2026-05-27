@@ -672,6 +672,35 @@ io.on('connection', (socket) => {
         removeTeamFromGame(pinCode, sessionId);
     });
 
+    // 게임 종료 (방장/감별사가 방 전체를 닫음)
+    socket.on('endGame', () => {
+        const pinCode = socket.pinCode;
+        const gameState = rooms[pinCode];
+
+        if (!gameState) {
+            socket.emit('error', '방을 찾을 수 없습니다!');
+            return;
+        }
+
+        if (socket.id !== gameState.hostId) {
+            socket.emit('error', '방장만 게임을 종료할 수 있습니다!');
+            return;
+        }
+
+        clearInterval(gameState.timerInterval);
+
+        // 모든 세션 정리
+        gameState.teams.forEach(t => {
+            if (t.sessionId && sessions[t.sessionId]) {
+                delete sessions[t.sessionId];
+            }
+        });
+
+        io.to(pinCode).emit('roomClosed', '선생님이 게임을 종료했습니다. 수고하셨습니다!');
+        delete rooms[pinCode];
+        console.log(`[${pinCode}] 방장이 게임을 종료했습니다.`);
+    });
+
     // 명시적 퇴장 (사용자가 직접 나가기 버튼 클릭 시)
     socket.on('leaveRoom', () => {
         const pinCode = socket.pinCode;

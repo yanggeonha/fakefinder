@@ -176,6 +176,36 @@ function showScreen(screenId) {
         screen.classList.remove('active');
     });
     document.getElementById(screenId).classList.add('active');
+    updateBottomBar(screenId);
+}
+
+// 하단 바 표시/숨김 + 게임 종료 버튼 노출 제어
+function updateBottomBar(screenId) {
+    const bar = document.getElementById('gameBottomBar');
+    const endBtn = document.getElementById('endGameBtn');
+    if (!bar) return;
+
+    // 게임 진행 중인 화면들에서만 하단 바 표시 (메인/방생성/방찾기/로비는 제외)
+    const inGameScreens = ['game', 'result', 'stageStart', 'finalResult'];
+    if (inGameScreens.includes(screenId) && clientState.pinCode) {
+        bar.classList.add('show');
+        document.body.classList.add('has-bottom-bar');
+        document.getElementById('gamePinCode').textContent = clientState.pinCode;
+        // 감별사(방장)에게만 종료 버튼 노출
+        if (endBtn) {
+            endBtn.style.display = clientState.isAppraiser ? 'inline-block' : 'none';
+        }
+    } else {
+        bar.classList.remove('show');
+        document.body.classList.remove('has-bottom-bar');
+        if (endBtn) endBtn.style.display = 'none';
+    }
+}
+
+// 게임 종료 (방장/감별사 전용)
+function endGame() {
+    if (!confirm('정말 게임을 종료할까요?\n모든 참가자가 메인 화면으로 나가게 됩니다.')) return;
+    socket.emit('endGame');
 }
 
 // 팀 목록 업데이트
